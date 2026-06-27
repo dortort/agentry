@@ -1,4 +1,5 @@
 import { describe, it, expect as v, afterEach } from 'vitest';
+import { z } from 'zod';
 import { EventFactory, RunRecord, Sandbox, type AgentEvent } from '@agentry/core';
 import { expect, subsetMatch } from '../src/assert';
 
@@ -100,5 +101,17 @@ describe('skill/plugin matchers', () => {
     v(() => expect(r).toFireHook('SessionStart', { injects: /system-reminder/ })).not.toThrow();
     v(() => expect(r).toFireHook('Nope')).toThrow();
     v(() => expect(r).toFireHook('SessionStart', { injects: 'absent-text' })).toThrow();
+  });
+});
+
+describe('schema matcher (Tier 3)', () => {
+  const Invoice = z.object({ id: z.number(), total: z.number() });
+
+  it('toMatchSchema validates JSON strings and objects (+ negation)', () => {
+    v(() => expect('{"id":1,"total":9}').toMatchSchema(Invoice)).not.toThrow();
+    v(() => expect({ id: 1, total: 9 }).toMatchSchema(Invoice)).not.toThrow();
+    v(() => expect('{"id":"x"}').toMatchSchema(Invoice)).toThrow();
+    v(() => expect('not json').toMatchSchema(Invoice)).toThrow();
+    v(() => expect({ id: 'x' }).not.toMatchSchema(Invoice)).not.toThrow();
   });
 });

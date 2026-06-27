@@ -113,6 +113,26 @@ export const matchers = {
     };
   },
 
+  /** Tier 3 structured-output: validate a value (string → JSON.parse first) against a zod-like schema. */
+  toMatchSchema(received: unknown, schema: { safeParse: (v: unknown) => { success: boolean; error?: unknown } }) {
+    let value = received;
+    if (typeof received === 'string') {
+      try {
+        value = JSON.parse(received);
+      } catch {
+        /* not JSON — validate the raw string */
+      }
+    }
+    const res = schema.safeParse(value);
+    return {
+      pass: res.success,
+      message: () =>
+        res.success
+          ? `expected value NOT to match schema`
+          : `expected value to match schema; validation error:\n${JSON.stringify(res.error, null, 2)}`,
+    };
+  },
+
   /** Tier 2 side-effect: assert a file exists in the sandbox (optionally containing text). */
   async toHaveFile(received: Sandbox, rel: string, opts?: { containing?: string | RegExp }) {
     const exists = await received.exists(rel);
@@ -185,6 +205,7 @@ declare module 'expect' {
     toHaveCalledAll(required: string[]): R;
     toHaveMcpRequest(matcher: { method?: string; server?: string; name?: string }): R;
     toFinishWithin(limits: { tokens?: number; turns?: number }): R;
+    toMatchSchema(schema: { safeParse: (v: unknown) => { success: boolean; error?: unknown } }): R;
     toHaveFile(rel: string, opts?: { containing?: string | RegExp }): Promise<R>;
     toHaveLoadedPlugin(name: string | RegExp): R;
     toFireHook(hook: string | RegExp, opts?: { injects?: string | RegExp }): R;
