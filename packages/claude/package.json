@@ -1,0 +1,12 @@
+{
+  "name": "@agentry/claude",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Agentry driver for Claude Code (headless stream-json).",
+  "exports": { ".": "./src/index.ts" },
+  "publishConfig": {
+    "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } }
+  },
+  "scripts": { "build": "tsup src/index.ts --format esm --dts --clean" },
+  "dependencies": { "@agentry/core": "workspace:*" }
+}
