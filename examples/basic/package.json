@@ -1,0 +1,10 @@
+{
+  "name": "@agentry/example-basic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentry MVP example — drive Claude to read a file, assert on behavior, replay deterministically.",
+  "dependencies": {
+    "agentry": "workspace:*"
+  }
+}

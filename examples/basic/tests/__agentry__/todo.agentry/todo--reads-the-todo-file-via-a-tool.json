@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "prompt": "Read the file notes/todo.md and tell me what is on the list.",
+  "model": "claude-haiku-4-5",
+  "events": [
+    {
+      "eventId": "rec:0",
+      "turnId": "init",
+      "source": "agent",
+      "agentNativeType": "system/init",
+      "redactionStatus": "none",
+      "ts": 0,
+      "payload": { "type": "run.start", "runId": "rec", "agent": "claude", "model": "claude-haiku-4-5" }
+    },
+    {
+      "eventId": "rec:1",
+      "turnId": "msg_1",
+      "source": "agent",
+      "capability": "tool",
+      "agentNativeType": "tool_use",
+      "redactionStatus": "none",
+      "ts": 0,
+      "payload": { "type": "tool_use", "id": "toolu_01", "name": "Read", "args": { "file_path": "notes/todo.md" } }
+    },
+    {
+      "eventId": "rec:2",
+      "turnId": "msg_1",
+      "source": "agent",
+      "capability": "tool",
+      "agentNativeType": "tool_result",
+      "redactionStatus": "none",
+      "ts": 0,
+      "payload": { "type": "tool_result", "id": "toolu_01", "name": "", "result": "- buy milk\n- call the bank", "isError": false }
+    },
+    {
+      "eventId": "rec:3",
+      "turnId": "msg_2",
+      "source": "agent",
+      "agentNativeType": "assistant.text",
+      "redactionStatus": "none",
+      "ts": 0,
+      "payload": { "type": "message", "role": "assistant", "text": "Your todo list contains two items: buy milk, and call the bank." }
+    },
+    {
+      "eventId": "rec:4",
+      "turnId": "result",
+      "source": "agent",
+      "agentNativeType": "result.usage",
+      "redactionStatus": "none",
+      "ts": 0,
+      "payload": { "type": "usage", "inputTokens": 3200, "outputTokens": 48, "costUSD": 0.0279 }
+    },
+    {
+      "eventId": "rec:5",
+      "turnId": "result",
+      "source": "agent",
+      "agentNativeType": "result",
+      "redactionStatus": "none",
+      "ts": 0,
+      "payload": { "type": "run.end", "runId": "rec", "exitCode": 0, "reason": "completed" }
+    }
+  ],
+  "result": {
+    "exitCode": 0,
+    "reason": "completed",
+    "usage": { "inputTokens": 3200, "outputTokens": 48, "costUSD": 0.0279 }
+  }
+}
