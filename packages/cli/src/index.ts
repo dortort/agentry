@@ -1,2 +1,3 @@
-// agentry (CLI) — programmatic entry. Commands added in focused commits.
-export {};
+// agentry — user-facing API. Re-exports the core surface so tests can do
+// `import { test, expect, defineConfig } from 'agentry'`.
+export * from '@agentry/core';
