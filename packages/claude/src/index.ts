@@ -1,2 +1,2 @@
-// @agentry/claude — Claude Code driver. Implementation added in focused commits.
-export {};
+// @agentry/claude — Claude Code driver.
+export * from './driver';
