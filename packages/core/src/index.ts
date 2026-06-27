@@ -3,3 +3,4 @@ export const AGENTRY_VERSION = '0.0.0';
 
 export * from './events';
 export * from './run';
+export * from './sandbox';
