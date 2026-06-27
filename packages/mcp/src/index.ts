@@ -1,2 +1,3 @@
-// @agentry/mcp — MCP interception. Implementation added in focused commits.
+// @agentry/mcp — MCP interception.
 export * from './mock-server';
+export * from './matchers';

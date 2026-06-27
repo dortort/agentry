@@ -188,5 +188,9 @@ declare module 'expect' {
     toHaveFile(rel: string, opts?: { containing?: string | RegExp }): Promise<R>;
     toHaveLoadedPlugin(name: string | RegExp): R;
     toFireHook(hook: string | RegExp, opts?: { injects?: string | RegExp }): R;
+    // MCP fixture matchers — implemented in @agentry/mcp (signatures declared here
+    // so 'expect' resolves; runtime extend lives in that package).
+    toExposeTools(names: string[]): R;
+    toHaveReceived(matcher: { method?: string; name?: string }): R;
   }
 }

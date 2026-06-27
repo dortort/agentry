@@ -79,6 +79,11 @@ export class McpServerCore {
     this.serverName = opts.serverName ?? 'agentry-mock';
   }
 
+  /** Names of the tools this mock advertises (for the toExposeTools matcher). */
+  get toolNames(): string[] {
+    return this.tools.map((t) => t.name);
+  }
+
   handle(msg: JsonRpcRequest): JsonRpcResponse | null {
     this.record(msg);
 
