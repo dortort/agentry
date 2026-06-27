@@ -34,3 +34,9 @@ coverage/
 # Agentry runtime artifacts
 .agentry/
 agentry-results/
+
+# OMC machine-local state (not part of the project)
+.omc/
+
+# Local-only research / reference notes (kept on disk for devs, not committed)
+docs/research/
