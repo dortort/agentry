@@ -1,7 +1,7 @@
 # Agentry — Roadmap, Scope & Open Questions
 
-Companion to [`SPEC.md`](./SPEC.md). This doc defines what ships when, the validation work that
-must precede architecture, and the decisions still open.
+Companion to [`SPEC.md`](./SPEC.md). Defines what ships when, the validation that must precede
+architecture, and the decisions still open. **Revised v2** after two pre-implementation reviews.
 
 ---
 
@@ -13,91 +13,117 @@ must precede architecture, and the decisions still open.
 | Agent driver | Pluggable `AgentDriver`, CLI subprocess automation first |
 | Substrate | Structured/headless primary; PTY/TUI secondary |
 | Assertion model | Two-tier: structural exact + semantic |
-| Determinism | Record/replay cassettes; **replay default**, live periodic |
+| Determinism | Record/replay cassettes (ordered, session-positional); **replay default**, live periodic |
 | Authoring | Code-first TypeScript v1; declarative YAML deferred |
-| **Targets in v1** | **All three: skills & plugins, MCP gateways, LLM gateways** |
-| **Agents in MVP** | **Claude**; Codex + Gemini + **Cursor** are fast-follow adapters within the v1 objective |
-| North star | Follow Playwright; diverge only for LLM non-determinism |
+| **Target types in v1** | **All four — skills, plugins, MCP gateways, LLM gateways** (skills & plugins = one workstream → "three workstreams"). **Committed GA.** |
+| **Agents** | **Claude** in MVP; **Codex + Gemini + Cursor** committed v1 objectives, spike-gated fast-follow |
+| North star | Follow Playwright; diverge only for LLM non-determinism (3 divergences — SPEC §1.4) |
 
 ---
 
-## 2. The scope tension (flagged, eyes-open)
+## 2. The scope tension (resolved — held firm, with a redefinition)
 
-The pre-planning analyst **strongly recommended a single-target MVP** (MCP servers only, Claude
-only, two assertion strategies) and rated "3 CLIs × 4 targets × 5 assertion types" as a **High**
-scope-creep risk.
+Both the pre-planning analyst **and** both pre-implementation reviews (Claude critic + Codex)
+recommended cutting v1 to a single target (MCP-only) and demoting the rest. **Owner held firm: all
+four target types are committed GA.**
 
-**Owner decision: v1 includes all three target types** (built in sequence), Claude-first.
+The reviews' strongest objection was that **skills/plugins might be unobservable** without modifying
+the agent. That objection is **resolved by redefinition, not by hope:**
 
-**Why this is acceptable, and how we de-risk it:**
+- Skills and plugins work by **mutating what the agent sends to the model** (visible on **CH1**, the
+  LLM-gateway wire) and **changing its behavior** (provable by **CH6**, the with/without
+  differential). See SPEC §6.1 and §9.2.
+- So skill/plugin tests assert **observable-effect contracts** (context injection, tool
+  registration, hook effects, downstream calls, side-effects, behavioral delta) — **not** internal
+  "was it invoked" events. Matchers are tagged `observed` vs `inferred`.
 
-1. **The spine is target-agnostic.** Drivers, event model, interception, assertions, sandbox,
-   trace/reporting are built once. Each target is mostly *fixtures + a matcher pack* over that
-   spine, not a new subsystem. Most of the cost is the spine, which is shared.
-2. **Sequenced, not simultaneous.** Targets land one at a time on the finished spine (Phase 2–4),
-   so we never debug three half-built surfaces at once.
-3. **Phase 0 validation gates the spend.** The analyst's "Critical/High" risks are empirical
-   unknowns; we resolve them in a time-boxed spike *before* committing to the architecture.
-4. **Assertion strategies are capped, not proliferated.** Ship Tiers 1–2 fully, Tier 3–4 thinly,
-   Tier 5 + a `custom()` escape hatch. Resist built-in strategy sprawl until patterns emerge.
+This gives Phase 2 a concrete implementation path on the existing spine, **no agent modification
+required.** The de-risking that makes "all four committed" defensible:
 
-If Phase 0 surfaces a blocker (e.g. an agent fundamentally un-proxyable), we fall back to the
-analyst's narrow MVP and re-sequence — see §7.
+1. **Shared spine** — runner, config, sandbox, reporters, trace are built once. *Honest caveat:*
+   each target still needs its own **observation mechanism**; that (not the matchers) is the real
+   per-target cost, and Phase 0 validates each.
+2. **Sequenced, not simultaneous** — targets land one at a time on a finished spine.
+3. **Phase 0 gates the spend** — every risky assumption is a cheap spike *before* architecture.
+4. **Assertion strategies capped** — Tiers 1–2 full, 3–4 thin, 5 + `custom()` escape hatch.
 
 ---
 
-## 3. Phase 0 — Validation spikes (BLOCKING; ~1–2 days, before architecture)
+## 3. Phase 0 — Validation spikes (BLOCKING; ~2–3 days, before architecture)
 
-These are cheap experiments that de-risk weeks of work. Each has a binary outcome that steers the
-design. *No production code until these are answered and written up.*
+Cheap experiments that de-risk weeks of work; each has a binary outcome. *No production code until
+these are answered and written up in `docs/research/phase0-findings.md` (local).*
 
-| # | Question | Method | Why it matters |
-|---|---|---|---|
-| 0.1 | Does `claude -p --output-format stream-json` drive headlessly with **no TTY**, and do tool/MCP/usage events appear structured? | Run it in a pipe; inspect JSON | Confirms the primary substrate. (Expected: yes.) |
-| 0.2 | Does Claude Code honor **`ANTHROPIC_BASE_URL`** so we can proxy LLM traffic? | Point at a logging proxy | Determines LLM interception viability. |
-| 0.3 | How does Claude Code reach **MCP servers** (stdio / HTTP+SSE), and can `.mcp.json` point at our proxy? | Configure a passthrough MCP proxy | Determines MCP interception architecture. |
-| 0.4 | Is **idle/exit** cleanly detectable in `-p` mode (terminal `result` event + process exit)? | Observe process lifecycle | Confirms we avoid fragile idle heuristics. |
-| 0.5 | Can a **sandbox with HOME-remap** run the agent without leaking host `~/.claude` config? | Run in temp HOME | Confirms isolation approach. |
-| 0.6 | Does **replay** exercise the same MCP-server code paths as live (state/time dependence)? | Diff a live vs replay run against a real server | Confirms replay fidelity for server-side targets. |
+### Claude (reference path)
+| # | Question | Why it matters |
+|---|---|---|
+| 0.1 | `claude -p --output-format stream-json --verbose` drives headlessly (no TTY); tool/MCP/usage events structured? | Confirms primary substrate |
+| 0.2 | `ANTHROPIC_BASE_URL` honored for LLM proxy? | LLM interception viability |
+| 0.3 | MCP transports (stdio / http+sse); does the **stdio shim** (SPEC §7.2) relay JSON-RPC + init/cancel/progress cleanly? | MCP interception architecture |
+| 0.4 | Idle/exit cleanly detectable in `-p` (terminal `result` + exit)? | Avoid fragile idle heuristics |
+| 0.5 | Sandbox + HOME-remap runs without leaking host `~/.claude`, **and** explicit credential injection works? | Isolation + auth-in-sandbox |
 
-**Exit criteria:** a short `docs/research/phase0-findings.md` (local) with a yes/no + evidence per
-spike, and any architecture deltas folded into `SPEC.md`.
+### Skills / plugins observability (the redefinition — validate the channels)
+| # | Question | Why it matters |
+|---|---|---|
+| 0.6 | **CH1:** after a skill is triggered, does its body appear in the next LLM request? Do plugin tools appear in `tools[]`? Do hook `<system-reminder>`s appear in `messages[]`? | Confirms effect-observability (SPEC §9.2) |
+| 0.7 | **CH2:** does stream-json surface native skill-invocation / hook events (→ `observed`), or must they be `inferred`? | Sets matcher confidence tags |
+| 0.8 | **CH6:** is a with/without **differential** run stable enough to assert behavioral deltas? | Confirms the hero technique |
+
+### Cassettes & replay fidelity
+| # | Question | Why it matters |
+|---|---|---|
+| 0.9 | Record a 3-turn run; re-run; does the **ordered positional canonicalization** (SPEC §7.4.1) match with zero false-matches? Edit a turn → clean `notFound`? | Core determinism engine |
+| 0.10 | Does `mcp-live` (llm-replay + mcp-live) exercise the **real MCP server's** code paths while keeping LLM deterministic? State-reset hooks work? | MCP-server test fidelity |
+
+### Cross-agent feasibility (per SPEC §4.3 matrix — gate each adapter)
+| # | Question | Why it matters |
+|---|---|---|
+| 0.11 | **Codex:** `codex exec --json`; LLM proxy via `model_providers.<id>.base_url` under `CODEX_HOME`; MCP support | Codex adapter feasibility |
+| 0.12 | **Gemini:** structured stream; base-URL interception (unproven); MCP config | Gemini adapter feasibility |
+| 0.13 | **Cursor (highest risk):** does `cursor-agent` run headless/structured at all (probing previously hung)? LLM/MCP interception? | Cursor adapter feasibility — may demote to fast-follow if it fails |
+
+**Exit criteria:** yes/no + evidence per spike; architecture deltas folded into `SPEC.md`. A failed
+cross-agent spike (esp. 0.13) demotes that agent to post-v1 without affecting the Claude GA path.
 
 ---
 
 ## 4. Delivery phases
 
-### Phase 1 — The spine (Claude, MCP-shaped first, no target polish)
-Driver (Claude headless) · normalized event model · LLM + MCP interception with
-**record/replay cassettes** · assertion engine (Tier 1 tool-call + Tier 2 side-effect, auto-retry,
-soft, `.not`, allow/deny/required) · directory sandbox + HOME remap + redaction · **hard budget
-cap** · cost-aware console reporter · `agentry init|test|record` · `agentry.config.ts` + projects.
-**Milestone:** the §"MVP success criteria" walkthrough passes end-to-end for one MCP scenario.
+### Phase 1 — The spine (Claude, MCP-shaped, no target polish)
+Claude driver (headless) · **causal event model + raw preservation** · LLM proxy + MCP
+proxy/stdio-shim with **ordered cassettes** (record/replay) · assertion engine (Tier 1 tool-call +
+Tier 2 side-effect; auto-retry, soft, `.not`, allow/deny/required) · directory sandbox + HOME remap
++ structural redaction · **layered budget guard** · cost-aware console reporter · `agentry
+init|test|record|doctor` · config + projects.
+**Milestone:** the §5 "5-minute test" passes end-to-end for one MCP scenario in both `replay` and
+`mcp-live`.
 
-### Phase 2 — Skills & plugins target
-Skill/plugin fixtures + matcher pack (invoke detection, args, output, side-effects, downstream
-behavior; plugin load/hook/context-injection/tool-registration; with/without behavioral diff).
+### Phase 2 — Skills & plugins target (observable-effect contracts)
+CH1 context-injection + tool-registration matchers, hook-effect matchers, downstream-behavior
+matchers, and the **CH6 differential harness** (`baseline` fixture). Matchers tagged
+`observed`/`inferred` per spikes 0.6–0.8.
 
 ### Phase 3 — MCP gateways target (deepen)
 `MockMcpServer` fixture, protocol-compliance matchers, error-code/lifecycle/concurrency assertions,
-state-reset hooks for real servers.
+state-reset hooks for real servers under `mcp-live`.
 
 ### Phase 4 — LLM gateways target
-Gateway assertion pack (routing, fallback, cache, rate-limit, transformation, token-accuracy,
-latency overhead, error propagation) over the existing LLM interceptor.
+Routing, fallback, cache, rate-limit, transformation, token-accuracy, latency-overhead, error-
+propagation matchers over the existing LLM interceptor.
 
-### Phase 5 — Cross-agent adapters (v1 objective)
-Codex (`codex exec`), Gemini (non-interactive), Cursor (`cursor-agent`) drivers against the proven
-interface; capability gating; shared suites run across the matrix.
+### Phase 5 — Cross-agent adapters (committed v1 objective, spike-gated)
+Codex, Gemini, Cursor drivers against the proven interface; per-agent capability gating; shared
+suites run across the matrix. Each gated on its Phase 0 spike (0.11–0.13).
 
 ### Phase 6 — Tier-3/4 assertions + JUnit/JSON/HTML reporters + parallelism hardening
-Structured-output (schema/AST) + LLM-as-judge (cheaper model, majority vote, soft scorecards);
-rate-limit-aware parallelism; HTML report linking to trace bundles.
+Structured-output (schema/AST) + LLM-as-judge (recorded for free replay, §8.5); rate-limit-aware
+parallelism; HTML report linking to trace bundles.
 
 ### Phase 7+ (post-v1) — Deferred
 Trace viewer UI · `codegen` record-to-test · PTY/TUI interactive driver + terminal snapshots ·
-container/VM isolation · declarative YAML authoring · sharding ergonomics · GitHub Actions
-first-class integration · semantic snapshot tooling.
+container/VM isolation as default · declarative YAML authoring · sharding ergonomics · GitHub
+Actions first-class integration.
 
 ---
 
@@ -107,60 +133,65 @@ A developer can:
 1. `npm i -D agentry` and `npx agentry init` in <5 min.
 2. Write a test that starts Claude Code, sends a prompt triggering an MCP tool, and asserts on the
    tool call + a side-effect.
-3. Run in **replay** mode in <2s and **live** in <120s.
+3. Run in **`replay`** in <2s and **`mcp-live`/`live`** in <120s.
 4. See clear pass/fail **with a cost summary**.
 5. Run in CI with nothing beyond an API key.
 
 ---
 
-## 6. Acceptance criteria (measurable, from analyst)
+## 6. Acceptance criteria (measurable)
 
 - **Isolation:** two parallel scenarios writing the same relative path both succeed with their own
   content.
-- **Budget:** exceeding the token budget terminates the agent within ~5s and fails with a `budget`
-  error.
-- **Transcript completeness:** a scenario with N tool calls yields exactly N `tool_use` events.
-- **Replay fidelity:** every test passing live also passes in replay (record 10, replay 10, all green).
-- **Framework overhead:** startup-to-first-assertion (excluding agent response) <10s.
+- **Budget:** exceeding the cap stops cleanly via the proxy gate (no orphaned children, cassette
+  intact) and fails with a `budget` error within ~5s; process-kill only as last resort.
+- **Transcript completeness:** a scenario with N tool calls yields exactly N `tool_use` events;
+  raw native events preserved.
+- **Replay fidelity (LLM):** every test passing live also passes in `replay` (record 10, replay 10,
+  all green), with **zero false cassette matches** on the positional key.
+- **Replay fidelity (MCP server):** MCP-server tests run under `mcp-live` (real server code paths)
+  with deterministic LLM replay; state-reset hooks isolate runs.
+- **Skill/plugin observability:** for a known skill and a known plugin hook, the corresponding CH1
+  effect is asserted as `observed`; the CH6 differential reproduces the intended behavioral delta.
+- **Performance:** framework overhead (startup-to-first-assertion, excl. agent response) **<1.5s**;
+  total `replay` run **<2s**. *(Reconciled — these are now consistent.)*
 - **Error quality:** every failed assertion names which assertion failed, expected vs actual, and
   points to the relevant trace section.
 
 ### Edge cases the suite must distinguish (not collapse into "timeout")
-Refusal · infinite loop (budget/timeout catches; message says "looped" not "slow") · MCP server
-crash mid-run · agent asks for clarification · record/replay model-version drift (warn) · 429s under
-parallelism (retry w/ backoff, not failure) · correct result via unexpected tool path (side-effect
-passes, strict-sequence fails — guide users to the resilient matcher) · large file outputs (capture
-caps) · secrets echoed in output (redaction catches) · cleanup failure (force-kill + retry).
+Refusal · infinite loop ("looped" ≠ "slow") · MCP server crash mid-run · agent asks for
+clarification · record/replay model-version drift (warn) · 429s under parallelism (backoff, not
+failure) · correct result via unexpected tool path (side-effect passes, strict-sequence fails —
+guide to the resilient matcher) · large file outputs (capture caps) · secrets echoed (redaction
+catches) · cleanup failure (force-kill + retry).
 
 ---
 
 ## 7. Open questions for the owner
 
-These don't block drafting but should be settled before/early in implementation:
+Resolved since v1: ~~skills/plugins observability~~ (→ effect contracts, §2); ~~scope~~ (→ held
+firm). Still open:
 
-1. **License & business model** — OSS (MIT/Apache) vs OSS-core + paid cloud? Affects whether the
-   trace viewer is local-only or has a SaaS option. *(Recommendation: MIT, local-only viewer for v1.)*
-2. **Primary persona for messaging/docs** — MCP-server dev vs skill/plugin author vs gateway
-   operator? (Scope says "all three"; docs still need a *lead* persona. *Recommendation: MCP-server
-   dev as the lead narrative, given the clearest competitive gap.*)
-3. **MCP server lifecycle** — does Agentry start/stop MCP servers (like Playwright manages the
-   browser) or expect them running? *(Recommendation: manage them, via a `webServer`-style config +
-   `MockMcpServer` fixture.)*
-4. **Cassette storage** — committed to the repo under test, or a separate cache/artifact store?
-   *(Recommendation: committed by default for hermetic CI; `attachmentsBaseURL`-style override for
-   large ones.)*
-5. **Repo shape** — single package vs monorepo (`@agentry/core`, `/claude`, `/mcp`, `/reporters`)?
-   *(Recommendation: monorepo so optional pieces stay out of the lean core.)*
-6. **Phase 0 ownership** — do you want to run the spikes interactively (you have the agent CLIs
-   installed), or should Agentry's first code be the spike harness?
+1. **License & business model** — OSS (MIT/Apache) vs OSS-core + paid cloud? *(Rec: MIT, local-only
+   viewer for v1.)*
+2. **Lead persona for docs** — all four types are in scope, but docs need a *lead* narrative. *(Rec:
+   MCP-server developer — clearest competitive gap.)*
+3. **MCP server lifecycle** — Agentry starts/stops servers (`webServer`-style) vs expects them
+   running. *(Rec: manage them + `MockMcpServer` fixture.)*
+4. **Cassette storage** — committed to the repo under test vs separate cache. *(Rec: committed for
+   hermetic CI; external-store override for large ones.)*
+5. **Repo shape** — single package vs monorepo (`@agentry/core`, `/claude`, `/mcp`, `/reporters`).
+   *(Rec: monorepo.)*
+6. **Phase 0 ownership** — you run the spikes interactively (you have the CLIs), or Agentry's first
+   code *is* the spike harness?
 
 ---
 
 ## 8. Status
 
 - [x] Foundational decisions locked (§1)
-- [x] Spec drafted (`SPEC.md`)
-- [x] Roadmap drafted (this doc)
-- [ ] Spec review pass (separate reviewer/critic lane)
+- [x] Spec drafted + revised post-review (`SPEC.md` v2)
+- [x] Roadmap drafted + revised (this doc v2)
+- [x] Independent review pass (Claude critic + Codex; in `docs/research/`)
 - [ ] Phase 0 spikes
 - [ ] Implementation

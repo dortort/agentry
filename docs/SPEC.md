@@ -4,11 +4,19 @@
 > **skills, plugins, MCP gateways, and LLM gateways** — by driving real agent CLIs
 > (Claude, Codex, Gemini, Cursor) through scripted scenarios and asserting on what they *do*.
 
-**Status:** Draft for review · **Owner:** dortort · **Last updated:** 2026-06-27
+**Status:** Draft v2 (post-review) · **Owner:** dortort · **Last updated:** 2026-06-27
+
+This revision incorporates two independent pre-implementation reviews (Claude critic + Codex
+second-opinion); their full text lives in `docs/research/` (local-only).
 
 Companion docs:
-- [`ROADMAP.md`](./ROADMAP.md) — MVP scope, phased delivery, Phase 0 spikes, open questions.
-- `docs/research/` — *local-only* Playwright research notes (gitignored; reference for implementers).
+- [`ROADMAP.md`](./ROADMAP.md) — scope, phased delivery, Phase 0 spikes, open questions.
+- `docs/research/` — *local-only* research + review notes (gitignored; reference for implementers).
+
+> **Target terminology (used consistently below):** there are **four target *types*** —
+> **skills, plugins, MCP gateways, LLM gateways** — all committed for v1. "Skills & plugins" are
+> built as **one workstream** because they share an observation strategy (§9.2–9.3), which is why
+> the roadmap sometimes says "three workstreams." Four types, three workstreams.
 
 ---
 
@@ -20,8 +28,8 @@ Playwright drives a real browser to test web apps. **Agentry drives a real AI ag
 agent's surrounding ecosystem.** You write code-first TypeScript tests that:
 
 1. Launch a real agent CLI (Claude Code first) in a sandbox with a given prompt/scenario.
-2. Observe everything it does through a normalized event stream — assistant turns, tool calls,
-   MCP requests/responses, LLM gateway traffic, token usage, timing, filesystem side-effects.
+2. Observe everything it does through a normalized, causal event stream — assistant turns, tool
+   calls, MCP requests/responses, LLM gateway traffic, token usage, timing, filesystem side-effects.
 3. Assert on that behavior with Playwright-style `expect()` matchers that auto-retry.
 4. Run deterministically and for free in CI via record/replay cassettes; run live periodically.
 
@@ -40,12 +48,18 @@ agent's surrounding ecosystem.** You write code-first TypeScript tests that:
 | **MCP Inspector** | Borrow protocol-level visibility into MCP JSON-RPC traffic. |
 | **Jest snapshots** | Snapshot **tool-call sequences / structural traces**, never raw LLM text. |
 
-### 1.4 Guiding principle
+### 1.4 Guiding principle & intentional divergences
 
 **Follow the Playwright model as closely as possible; diverge only where LLM non-determinism
-forces it.** Every subsystem below names its Playwright equivalent first, then justifies any
-divergence. The two intentional divergences are **semantic assertions** (§8) and **record/replay
-as the default run mode** (§7).
+forces it.** Every subsystem names its Playwright equivalent first, then justifies any divergence.
+The **three** intentional divergences are:
+
+1. **Semantic assertions** (§8) — content meaning can't be exact-matched.
+2. **Record/replay as the default run mode** (§5, §7) — Playwright treats HAR as niche; for us it's
+   the default determinism/cost strategy.
+3. **Ordered, session-scoped cassette matching** (§7.3) — Playwright's HAR matches statelessly on
+   `URL+method+body`; non-deterministic, history-accumulating LLM calls force a *positional* match
+   key instead.
 
 ---
 
@@ -64,7 +78,6 @@ Agentry applies the identical discipline. An agent exposes two surfaces:
   what a human sees, but flaky to assert on. Opt-in only, via the secondary PTY driver.
 
 **Decision: structured/headless is the primary substrate for all assertions and recording.**
-The PTY/TUI driver is a secondary layer for the few tests that genuinely need interactive UX.
 
 ### 2.2 The two load-bearing invariants
 
@@ -82,8 +95,8 @@ The PTY/TUI driver is a secondary layer for the few tests that genuinely need in
 | **Scenario** (`test()`) | One agent task: a prompt (or multi-turn script) + expected behavior. |
 | **Suite** (`describe()`) | A capability grouping (e.g. "file-edit skill", "MCP auth"). |
 | **Run / Session** | One execution of an agent against a scenario, producing an event stream. |
-| **Event** | A normalized record in the stream (message, tool_use, mcp_request, usage, …). |
-| **Cassette** | A recorded set of LLM+MCP exchanges (the HAR analog) for deterministic replay. |
+| **Event** | A normalized, causal record in the stream (§6). |
+| **Cassette** | A recorded, ordered set of LLM+MCP exchanges (the HAR analog) for deterministic replay. |
 | **Target** | The thing under test: a skill, plugin, MCP gateway, or LLM gateway. |
 | **Driver** | An adapter that controls one agent CLI and normalizes its surface to the event model. |
 | **Trace** | The full debuggable artifact of a run (events + gateway traffic + tokens + timing). |
@@ -95,8 +108,7 @@ The PTY/TUI driver is a secondary layer for the few tests that genuinely need in
 ### 3.1 The interception (proxy) architecture
 
 Agentry sits **between the agent CLI and its dependencies**, the way Playwright sits between the
-test and the browser (via CDP). This gives total visibility and control without modifying the
-agent.
+test and the browser (via CDP). This gives total visibility and control without modifying the agent.
 
 ```
                  ┌─────────────────────────── Agentry test process ───────────────────────────┐
@@ -104,17 +116,17 @@ agent.
                  └───────────────┬───────────────────────────────────────────────┬─────────────┘
                                  │ drives (spawn, prompt, await idle)              │ reads events
                                  ▼                                                 ▼
-   ┌──────────────┐   stdio /   ┌──────────────────┐   intercepts   ┌──────────────────────────┐
-   │  Agent CLI    │  stream-json│  Agent Driver     │───────────────▶│   Normalized Event Stream │
+   ┌──────────────┐   stdio /   ┌──────────────────┐   normalizes   ┌──────────────────────────┐
+   │  Agent CLI    │  stream-json│  Agent Driver     │───────────────▶│ Causal Event Stream (§6)  │
    │ (claude -p …) │◀───────────▶│ (Claude adapter)  │                └──────────────────────────┘
    └──────┬────────┘             └──────────────────┘
-          │ LLM calls (ANTHROPIC_BASE_URL)            │ MCP calls (.mcp.json → proxy)
+          │ LLM calls (base-URL override)             │ MCP calls (http/sse proxy OR stdio shim)
           ▼                                            ▼
    ┌────────────────────┐                      ┌────────────────────┐
-   │ LLM Gateway Proxy   │  observe / mock /    │ MCP Gateway Proxy   │  observe / mock /
-   │  (record / replay)  │  fault / passthrough │  (record / replay)  │  fault / passthrough
+   │ LLM Gateway Proxy   │  observe / mock /    │ MCP Interceptor     │  observe / mock /
+   │  (record / replay)  │  fault / passthrough │  (proxy + stdio shim)│  fault / replay / live
    └─────────┬──────────┘                      └─────────┬──────────┘
-             ▼ (live mode only)                          ▼ (live mode only)
+             ▼ (live mode only)                          ▼ (mcp:live mode)
      Real LLM provider API                        Real MCP server(s)
 ```
 
@@ -124,180 +136,302 @@ agent.
 |---|---|---|
 | **Test Runner** | Discover/schedule scenarios, projects, workers, retries, sharding. | `@playwright/test` runner |
 | **Agent Driver** | Spawn/prompt/await an agent CLI; normalize its surface to events. | Browser + CDP connection |
-| **Event Model** | Canonical, agent-agnostic event schema (§6). | DOM / accessibility tree |
+| **Event Model** | Canonical, agent-agnostic causal event graph (§6). | DOM / accessibility tree |
 | **Interception Layer** | Proxy LLM + MCP traffic: observe, mock, fault-inject, record/replay. | `page.route` / `routeFromHAR` |
 | **Assertion Engine** | Two-tier matchers over the event stream; auto-retry, soft, snapshots. | `expect` + web-first assertions |
-| **Sandbox** | Isolated workspace, HOME remap, network allowlist, secret redaction, cleanup. | `BrowserContext` isolation |
-| **Cost/Budget Guard** | Per-turn/test/suite token & dollar caps with hard circuit-breaker. | (Agentry-specific) |
+| **Sandbox** | Isolated workspace, HOME remap, network policy, secret redaction, cleanup. | `BrowserContext` isolation |
+| **Cost/Budget Guard** | Layered token & dollar caps (preflight + proxy gate + CLI-native). | (Agentry-specific) |
 | **Trace Writer + Reporter** | Emit trace bundles + reports (console/JUnit/JSON/HTML). | Tracing + reporters |
 
-**The spine is target-agnostic.** Skills, plugins, MCP gateways, and LLM gateways are
-*assertion surfaces and fixtures* layered on the same spine (§9), which is what makes "all three
-targets in v1" feasible — see [`ROADMAP.md`](./ROADMAP.md).
+**The spine is mostly target-agnostic — with one honest caveat.** The runner, config, sandbox,
+reporters, and trace system are fully shared. But **each target needs its own *observation
+mechanism*** (transport interception for MCP/LLM; on-the-wire + differential observation for
+skills/plugins — §9). That observation work, not the matchers, is the real per-target cost. The
+roadmap (Phase 0) validates each before committing.
 
 ---
 
 ## 4. Agent Drivers
 
-### 4.1 The `AgentDriver` interface (pluggable)
+### 4.1 The `AgentDriver` / `AgentSession` interface (pluggable)
 
 ```ts
 interface AgentDriver {
-  readonly id: string;                       // 'claude' | 'codex' | 'gemini' | 'cursor'
-  capabilities(): DriverCapabilities;        // structured output? MCP? streaming? PTY?
+  readonly id: 'claude' | 'codex' | 'gemini' | 'cursor' | string;
+  capabilities(): DriverCapabilities;
   launch(opts: LaunchOptions): Promise<AgentSession>;
 }
 
+interface DriverCapabilities {
+  structuredStream: boolean;       // machine-readable event stream (e.g. stream-json)
+  llmInterception: 'base-url' | 'provider-config' | 'http-proxy' | 'none';
+  mcpTransports: Array<'stdio' | 'http' | 'sse'>;
+  toolPermissionControl: boolean;  // can we allow/deny tools non-interactively?
+  configIsolation: 'env' | 'home' | 'cli-flag' | 'config-home'; // how to sandbox its config
+  sessionPersistence: 'optional' | 'forced' | 'none';
+  nativeBudgetControl: boolean;    // e.g. claude --max-budget-usd
+  skillPluginSignals: Array<'context-injection' | 'tool-registration' | 'native-event' | 'hook'>;
+  unsupported: string[];           // known gaps, for capability gating
+}
+
 interface AgentSession {
-  prompt(input: string | Message): Promise<void>;   // send a turn
-  events(): AsyncIterable<AgentEvent>;              // normalized event stream (§6)
-  waitForIdle(opts?: { timeout?: number }): Promise<RunResult>;
-  waitForToolCall(name: string | RegExp, predicate?): Promise<ToolCallEvent>;
+  // control
+  prompt(input: string | Message): Promise<void>;
   interrupt(): Promise<void>;
   close(): Promise<void>;
-  readonly workspace: Sandbox;
+  // observation
+  events(): AsyncIterable<EventEnvelope>;     // §6
+  waitForIdle(opts?: { timeout?: number }): Promise<RunResult>;
+  waitForToolCall(name: string | RegExp, predicate?: (e: ToolCallEvent) => boolean): Promise<ToolCallEvent>;
+  waitForLLMRequest(predicate?: (e: LlmRequestEvent) => boolean): Promise<LlmRequestEvent>;
+  // accessors (read the materialized stream)
+  readonly messages: MessageEvent[];
+  readonly toolCalls: ToolCallEvent[];
+  readonly lastMessage: string;               // assistant's final text
+  readonly output: string;                    // canonical final result text/JSON
+  readonly systemPrompt: string;              // assembled system prompt seen on the wire
+  readonly availableTools: string[];          // tools declared to the model
+  readonly askedForClarification: boolean;
   readonly usage: UsageMeter;
+  readonly workspace: Sandbox;
+  readonly trace: TraceHandle;
 }
+
+interface RunResult { exitCode: number | null; reason: 'completed'|'refusal'|'timeout'|'crash'|'budget'|'loop'; usage: Usage; }
 ```
 
-Each driver's only hard job: **translate its CLI's native surface into the common `AgentEvent`
-model.** Everything above the driver is agent-agnostic.
+Each driver's only hard job: **translate its CLI's native surface into the common event model.**
+Everything above the driver is agent-agnostic. The interface preserves raw native events (§6) so
+nothing is lost in normalization.
 
 ### 4.2 Claude driver (MVP, reference implementation)
 
-- **Headless invocation:** `claude -p "<prompt>" --output-format stream-json --verbose`
-  (+ `--model`, `--mcp-config`, tool allow/deny flags, `--max-turns`).
-- **No TTY required.** Headless print mode reads the prompt as an argument / stdin and streams
-  structured JSON events to stdout — directly resolving the analyst's "Critical" TTY risk for the
-  primary path.
-- **Idle detection is free.** In `-p` mode the process emits a terminal `result` event and exits;
-  no stdout-quiescence heuristics needed (unlike the interactive path).
-- **Structured tool/MCP/usage events** come straight from `stream-json` — no text scraping.
-- **LLM interception** via `ANTHROPIC_BASE_URL` pointed at Agentry's LLM proxy (cleaner than
-  `HTTPS_PROXY`).
-- **MCP interception** by generating an `.mcp.json` that points the agent at Agentry's MCP proxy,
-  which fronts the real server(s) (or a `MockMcpServer`).
+Reference invocation:
 
-### 4.3 Secondary PTY/TUI driver
+```
+claude -p "<prompt>" \
+  --output-format stream-json --verbose \      # --verbose is REQUIRED for stream-json to emit full events
+  --model <pinned-snapshot> \
+  --strict-mcp-config --mcp-config <generated> \   # only Agentry's MCP config; ignore host config
+  --no-session-persistence \                   # hermetic: no cross-run session state
+  --max-budget-usd <cap>                        # CLI-native budget backstop (see §13)
+```
 
-For tests that need the *interactive* experience (slash-command UX, interactive prompts), a driver
-built on `node-pty` + `@xterm/headless` drives the real TUI and parses screen state. This path
-inherits the harder problems (idle detection, ANSI noise) and is therefore **opt-in and not on the
-MVP critical path**. Used for PTY-based recording and terminal snapshots only.
+- **No TTY required.** Headless print mode streams structured JSON to stdout — resolving the TTY
+  risk for the primary path.
+- **Idle/exit is free.** `-p` emits a terminal `result` event and the process exits; no
+  stdout-quiescence heuristics.
+- **Structured tool/MCP/usage events** come straight from `stream-json`.
+- **LLM interception** via base-URL override (`ANTHROPIC_BASE_URL`) → Agentry's LLM proxy.
+- **MCP interception** via §7.2 (http/sse proxy or stdio shim), wired through the generated
+  `--mcp-config`.
+- **Skill/plugin observation** via the channels in §6.1 / §9.
 
-### 4.4 Codex, Gemini, Cursor adapters (v1 objective, fast-follow)
+### 4.3 Per-agent capability & interception matrix (validate in Phase 0 before freezing the interface)
 
-Implemented against the same interface after the Claude driver proves the event model:
+| Capability | Claude | Codex | Gemini | Cursor |
+|---|---|---|---|---|
+| Machine-readable stream | `stream-json` ✓ | `codex exec --json` ✓ | `--output-format stream-json` ✓ (verify) | `cursor-agent` print/stream ⚠️ unverified |
+| LLM interception | `ANTHROPIC_BASE_URL` | `model_providers.<id>.base_url` (under `CODEX_HOME`; built-in provider ids reserved) | base-URL **unproven** | **unproven / high-risk** |
+| MCP transports | stdio + http/sse | verify | stdio + http/sse (verify) | verify |
+| Config isolation | `--strict-mcp-config`, env/HOME | **`CODEX_HOME`** (not project-local) | env/HOME (verify) | verify |
+| Session persistence off | `--no-session-persistence` | verify | verify | verify |
+| Native budget control | `--max-budget-usd` | verify | verify | verify |
+| Known risk | low | medium (config model differs) | medium (base-URL unproven) | **highest** (`cursor-agent --help` hung during probing) |
 
-- **Codex** — `codex exec` non-interactive + JSON output.
-- **Gemini** — Gemini CLI non-interactive mode + structured output.
-- **Cursor** — the headless `cursor-agent` CLI (print/stream mode).
+> These are **not interchangeable adapters.** Each driver's `capabilities()` drives capability
+> gating (`test.skip(!caps.mcp)`), and each row above is a Phase 0 spike (ROADMAP §3) before that
+> driver is built. Claude is the reference; the rest are committed v1 objectives, spike-gated.
 
-Each adapter declares its `capabilities()`; scenarios gate on capability (`test.skip(!caps.mcp)`)
-so a shared suite runs across agents wherever the surface exists. Structured-output parity varies
-per agent — normalization in the driver is exactly where that variance is absorbed.
+### 4.4 Secondary PTY/TUI driver
+
+For interactive UX tests, a `node-pty` + `@xterm/headless` driver drives the real TUI and parses
+screen state. Inherits the harder problems (idle detection, ANSI noise); **opt-in, off the MVP
+critical path**, used for PTY recording and terminal snapshots only.
 
 ---
 
 ## 5. Run Modes
 
-| Mode | LLM/MCP traffic | Speed | Cost | Determinism | Use |
-|---|---|---|---|---|---|
-| **`replay`** (default) | served from cassette | <2s | $0 | full | every PR / local dev |
-| **`record`** | hit real services, write cassette | slow | $$ | n/a | authoring / re-baselining |
-| **`live`** | hit real services, no cassette | slow | $$ | none | nightly drift detection |
-| **`dry`** | none (validate structure only) | instant | $0 | n/a | lint test files & assertions |
+Two independent channels — **LLM** and **MCP** — each `live | record | replay` (MCP adds `mock`).
+Named presets compose them; pick per-scenario via tags or config.
 
-`--mode` selects globally; tags (`@live`, `@replay`) + project config select per-scenario tiers.
+| Preset | LLM channel | MCP channel | Use | Speed / Cost |
+|---|---|---|---|---|
+| **`replay`** (default) | replay | replay | client / **skill / plugin** / agent-behavior tests | <2s · $0 |
+| **`mcp-live`** | replay | live | **MCP-server / gateway** tests (must exercise real server code paths) | medium · $0 LLM |
+| **`record`** | record | record | authoring / re-baselining | slow · $$ |
+| **`live`** | live | live | nightly drift / protocol-conformance | slow · $$ |
+| **`dry`** | — (no launch) | — | lint test files & assertions | instant · $0 |
+
+**Why split:** replaying MCP responses from a cassette does **not** exercise the MCP server's own
+code — fine when the agent is the unit under test, wrong when the *server* is. `mcp-live` keeps LLM
+calls deterministic/free while running the real server, with per-test **state-reset and lifecycle
+hooks** (§7.2, §9.1).
+
+Performance contract: **`replay` total < 2s**, of which **framework overhead < 1.5s** + cassette
+serving. (Reconciles the earlier §5/§6 contradiction.)
 
 ---
 
-## 6. The Normalized Event Model
+## 6. The Normalized Event Model (causal graph)
 
-A single agent-agnostic, append-only stream. Assertions and traces read only this.
+A single agent-agnostic, append-only stream. Every event is wrapped in an envelope that records
+**causality** and **preserves the raw native event** (never discarded — normalization is lossy, so
+we keep the original for debugging and forward-compat).
 
 ```ts
-type AgentEvent =
-  | { type: 'run.start';    runId; agent; model; scenario; ts }
-  | { type: 'message';      role: 'assistant'|'user'|'system'; text; ts }
-  | { type: 'tool_use';     id; name; args; ts }              // agent invokes a tool/skill
-  | { type: 'tool_result';  id; name; result; isError; ts }
-  | { type: 'mcp_request';  server; method; params; ts }       // JSON-RPC to MCP
-  | { type: 'mcp_response'; server; method; result; error; ts }
-  | { type: 'llm_request';  model; messages; tools; params; ts }
-  | { type: 'llm_response'; model; finishReason; usage; ts }
-  | { type: 'skill';        name; phase: 'invoke'|'result'; args; result; ts }
-  | { type: 'plugin';       name; event: 'load'|'hook'; detail; ts }
-  | { type: 'fs';           op: 'create'|'modify'|'delete'; path; ts }   // sandbox diff
-  | { type: 'usage';        inputTokens; outputTokens; cacheTokens; costUSD; ts }
-  | { type: 'error';        kind: 'refusal'|'timeout'|'crash'|'budget'|'loop'; detail; ts }
-  | { type: 'run.end';      runId; exitCode; result; ts };
+interface EventEnvelope {
+  eventId: string;
+  parentId?: string;             // causal parent (e.g. the model turn that issued this tool call)
+  turnId: string;                // groups events within one model turn
+  source: 'agent' | 'llm-proxy' | 'mcp-proxy' | 'sandbox' | 'runner';
+  transport?: 'stdio' | 'http' | 'sse' | 'pty';
+  capability?: 'mcp' | 'skill' | 'plugin' | 'tool' | 'llm';
+  agentNativeType?: string;      // the CLI's own event type, pre-normalization
+  raw: unknown;                  // preserved native payload — never dropped
+  redactionStatus: 'none' | 'redacted';
+  ts: number;
+  payload: AgentEventPayload;
+}
+
+type AgentEventPayload =
+  | { type: 'run.start';    runId; agent; model; scenario }
+  | { type: 'message';      role: 'assistant'|'user'|'system'; text }
+  | { type: 'tool_use';     id; name; args }                 // NOTE: field is `args` everywhere
+  | { type: 'tool_result';  id; name; result; isError }
+  | { type: 'mcp_request';  server; method; params }
+  | { type: 'mcp_response'; server; method; result; error }
+  | { type: 'llm_request';  model; system; messages; tools; params }   // full assembled context
+  | { type: 'llm_response'; model; finishReason; usage }
+  | { type: 'skill';        name; phase: 'available'|'invoke'|'result'; args?; result?; confidence: 'observed'|'inferred' }
+  | { type: 'plugin';       name; event: 'tool-registered'|'context-injected'|'hook-fired'; detail; confidence: 'observed'|'inferred' }
+  | { type: 'fs';           op: 'create'|'modify'|'delete'; path }      // from sandbox diff
+  | { type: 'usage';        inputTokens; outputTokens; cacheTokens; costUSD }
+  | { type: 'error';        kind: 'refusal'|'timeout'|'crash'|'budget'|'loop'; detail }
+  | { type: 'run.end';      runId; exitCode; result };
 ```
 
-**Normalization rules** (the "freeze animations" analog for stable snapshots): strip/normalize
-volatile fields (timestamps, request IDs, randomized ordering) before snapshotting; redact secrets
-on the way in (§13).
+- **`fs` events** come from a **post-hoc sandbox diff** by default (snapshot before/after; robust,
+  no watcher races); an optional live watcher (chokidar) is available for streaming traces.
+- **`skill`/`plugin` events carry a `confidence` tag** (`observed` vs `inferred`) — see §6.1/§9.
+- **Crash handling:** if the agent dies mid-run, the driver synthesizes a terminal
+  `error`+`run.end` so the stream is always well-formed and the partial trace is captured.
+
+### 6.1 Observation channels (how facts reach the stream)
+
+| Ch | Source | Carries | Used by |
+|---|---|---|---|
+| **CH1** | LLM gateway (the wire) | full per-turn request: `system`, `tools[]`, `messages[]` (incl. injected skill bodies & hook reminders), params | **skills, plugins**, LLM gateways |
+| **CH2** | stream-json | assistant turns, `tool_use`/`tool_result`, native skill/hook events | all |
+| **CH3** | MCP interceptor | tool discovery + JSON-RPC calls/results | MCP gateways, downstream behavior |
+| **CH4** | sandbox FS diff | files created/modified/deleted | side-effects |
+| **CH5** | process | exit code, stderr, lifecycle | error classification |
+| **CH6** | differential | with-vs-without comparison of CH1–CH5 | **skills, plugins** (behavioral contracts) |
+
+> **Normalization rules** (the "freeze animations" analog): strip/normalize volatile fields
+> (timestamps, request/message IDs, randomized ordering) before snapshotting/hashing; redact
+> secrets *structurally before persistence* (§13) — but compute cassette match-hashes on the
+> pre-redaction, canonicalized form (§7.3).
 
 ---
 
 ## 7. Interception & Record/Replay (the `page.route` analog)
 
-A single interception layer fronts **both** the LLM gateway and the MCP gateway/servers, with
-the same verbs as Playwright's `Route`.
+A single interception layer fronts **both** the LLM gateway and the MCP servers, with the same
+verbs as Playwright's `Route`.
 
 ### 7.1 Routing API
 
 ```ts
-// suite-wide (cf. context.route)              // scoped to one run (cf. page.route)
-agentry.route(matcher, handler)                session.route(matcher, handler)
+agentry.route(matcher, handler)   // suite-wide (cf. context.route)
+session.route(matcher, handler)   // scoped to one run (cf. page.route)
 ```
 
-`matcher` targets **logical** endpoints, not raw URLs: `llm://anthropic/messages`,
-`mcp://<server>/<tool>`, glob/RegExp/predicate — exactly Playwright's matching model.
+`matcher` targets **logical** endpoints: `llm://anthropic/messages`, `mcp://<server>/<tool>`,
+glob/RegExp/predicate — Playwright's matching model.
 
-### 7.2 `Route` verbs
+### 7.2 Transport handling (two MCP forms)
+
+`.mcp.json → proxy` only works when the agent speaks MCP over **HTTP/SSE**. For **stdio** MCP
+servers (a child process speaking JSON-RPC over pipes) we need a shim:
+
+- **HTTP/SSE proxy** — the generated MCP config points the agent at an Agentry URL; we proxy to the
+  real server (or a `MockMcpServer`).
+- **stdio shim** — the generated config launches `agentry-mcp-shim <server-id>`; the shim spawns
+  the **real** server command, relays JSON-RPC over stdio, and **records/observes** traffic while
+  preserving `initialize`, `cancel`, progress, and notifications.
+
+Both forms expose the same `Route` verbs and `mcp:live|replay|mock` semantics; `mcp-live` adds
+**per-test server lifecycle** (start/stop, like Playwright's `webServer`) and **state-reset hooks**.
+
+### 7.3 `Route` verbs
 
 | Verb | Agentry meaning |
 |---|---|
-| `route.fulfill({ json \| path \| body, status, headers })` | **Stub** a canned LLM completion or MCP tool result — the core determinism primitive. |
-| `route.abort('timedout' \| 'connectionreset' \| …)` | **Fault-inject** transport failures (reuse Playwright's error vocabulary). |
-| `route.continue({ model, messages, params, headers })` | **Pass-through with mutation** — swap model, inject system prompt, redact secrets, reroute. |
+| `route.fulfill({ json \| path \| body, status, headers })` | **Stub** a canned LLM completion or MCP tool result. |
+| `route.abort('timedout' \| 'connectionreset' \| …)` | **Fault-inject** transport failures (Playwright's error vocabulary). |
+| `route.continue({ model, messages, params, headers })` | **Pass-through with mutation** — swap model, inject system prompt, redact, reroute. |
 | `route.fallback()` | **Layered chain**: mock → cassette → live. |
-| `route.fetch()` + `fulfill({ response })` | **Capture-then-mutate** — call real, then truncate/corrupt/drop a tool-call before the agent sees it. |
-| `route.delay(ms)` / `route.status(429,{retryAfter}) / 500` / `route.malformed()` | Latency, rate-limit, server-error, and malformed-payload faults. |
+| `route.fetch()` + `fulfill({ response })` | **Capture-then-mutate** — call real, then truncate/corrupt/drop before the agent sees it. |
+| `route.delay(ms)` / `route.status(429,{retryAfter}) / 500` / `route.malformed()` | Latency, rate-limit, server-error, malformed-payload faults. |
 
-### 7.3 Cassettes (the HAR / `routeFromHAR` analog) — the determinism centerpiece
-
-```ts
-session.routeFromCassette(path, { notFound: 'abort' | 'fallback', update?: boolean, url? })
-```
-
-- **Match key** = hash over `{ target (model/tool) + canonicalized request body }`. Because LLM
-  requests carry volatile fields, the cassette **canonicalizes** the request (ignore/normalize
-  volatile fields; optional fuzzy prompt match) — a deliberate, documented extension beyond
-  Playwright's exact `URL+method+postData` matching.
-- **`notFound: 'abort'`** (default) = **hermetic**: an unrecorded call fails the test (guarantees
-  the cassette is complete). **`'fallback'`** = **record-extend**: new calls hit live and append.
-- **`update: true`** = re-record. Large tool outputs/completions stored as sidecar files
-  (`updateContent: 'attach'` analog); record only what's needed to replay (`updateMode: 'minimal'`).
-- **Workflow:** record once against real services → commit cassette → CI replays for free and
-  deterministically. *This is the single most valuable Playwright→Agentry transfer.*
-
-### 7.4 Streaming (the `routeWebSocket` analog)
-
-For SSE/streamed completions and stdio/WS MCP: a per-message handler API (mock = fully scripted
-stream; intercept = tap the real stream and inject mid-stream faults/truncation/reordering).
-
-### 7.5 `waitForToolCall` (the `waitForResponse` analog) — the headline sync primitive
+### 7.4 Cassettes (the `routeFromHAR` analog) — ordered, session-scoped
 
 ```ts
-const call = session.waitForToolCall('search', r => /invoice/.test(r.params.query)); // arm
-await session.prompt('Find the unpaid invoice');                                     // act
-expect((await call).params.query).toContain('invoice');                              // await
+session.routeFromCassette(path, { notFound: 'abort' | 'fallback', llm?: 'replay'|'live', mcp?: 'replay'|'live' })
 ```
 
-Arm-before-act/await-after, resolving when a matching tool call or LLM turn appears deep inside an
-autonomous run — exactly how `waitForResponse` pinpoints one network call in a complex flow.
+Playwright matches HAR statelessly on `URL+method+body`. LLM calls are **history-accumulating and
+non-deterministic**, so stateless body matching produces *false matches* (replaying the wrong
+response into a plausible-looking run). Agentry instead uses an **ordered, positional** key.
+
+#### 7.4.1 Canonicalization & match key (was the weakest section — now specified)
+
+**Match key:**
+```
+sha256( sessionId · turnIndex · callIndex · endpoint · normalizedToolSchemaHash · normalizedMessagesHash )
+```
+- **Positional:** `turnIndex`/`callIndex` are the primary discriminators (i-th LLM call of the
+  session), so identical-looking requests at different points still resolve correctly.
+- **Volatile fields stripped before hashing:** provider request IDs; message/`tool_use`/`tool_call`
+  IDs (remapped to ordinals); timestamps; `cache_control` breakpoints & cache usage; randomized key
+  ordering; absolute sandbox paths (→ workspace-relative); model alias date suffix when pinned.
+- **Stable fields hashed:** endpoint, normalized message contents, normalized tool-schema set
+  (order-insensitive), sampling params.
+- **Multi-turn indexing:** purely positional within the `sessionId`; the cassette is an ordered log,
+  not a content-addressed bag.
+- **Collision/ambiguity:** two entries with the same key ⇒ **hard error** ("ambiguous cassette
+  entry"), never silent first-match.
+- **`notFound: 'abort'`** (default) = **hermetic** (unrecorded call fails the test).
+  **`'fallback'`** = once any call falls through, the **remainder of that session runs live**
+  (because the trajectory may now diverge — no Frankenstein mixing within a session).
+- **Fuzzy matching is NOT default.** It exists only as an authoring-time repair (`agentry record
+  --repair`) to help re-bind a cassette after an intentional prompt edit; CI replay is always exact
+  on the canonicalized key.
+
+**Worked example:** a 3-turn run records `[t0c0 llm, t0c0 mcp(read_file), t1c0 llm, t2c0 llm]`.
+Replay normalizes each outgoing request (strip IDs/timestamps, remap tool_use ids to ordinals,
+relativize paths), recomputes the positional key, and serves the recorded response. Editing turn-2's
+prompt changes `normalizedMessagesHash` at `t2c0` → `notFound` (abort fails the test; fallback goes
+live from t2). `agentry record --repair` re-records from the first divergence.
+
+### 7.5 Streaming (the `routeWebSocket` analog)
+
+For SSE/streamed completions and stdio/WS MCP: a per-message handler API (mock = scripted stream;
+intercept = tap the real stream and inject mid-stream faults/truncation/reordering).
+
+### 7.6 `waitForToolCall` (the `waitForResponse` analog)
+
+```ts
+const call = session.waitForToolCall('search', e => /invoice/.test(e.args.query)); // arm
+await session.prompt('Find the unpaid invoice');                                   // act
+expect((await call).args.query).toContain('invoice');                              // await
+```
+
+In replay, the event stream is emitted with the same async ordering as live (responses are served
+from the cassette but still flow through the stream), so `waitForToolCall` behaves identically in
+replay and live — preserving the "replay = same behavior" invariant.
 
 ---
 
@@ -305,81 +439,126 @@ autonomous run — exactly how `waitForResponse` pinpoints one network call in a
 
 ### 8.1 Two tiers, five strategies
 
-Structure is exact; content is semantic. Concretely, five strategies (steer users to 1–2):
+Structure is exact; content is semantic. Five strategies (steer users to 1–2):
 
 | Tier | Strategy | Determinism | Example |
 |---|---|---|---|
-| **1** | **Tool-call assertions** (hero feature) | High | `expect(run).toHaveToolCall('read_file', { path: '/a.ts' })` |
+| **1** | **Tool-call assertions** (hero feature) | High | `expect(agent).toHaveToolCall('read_file', { path: '/a.ts' })` |
 | **2** | **Side-effect assertions** | High | `expect(workspace).toHaveFile('src/u.ts', { containing: 'export' })` |
-| **3** | **Structured-output assertions** | High (when applicable) | `expect(run.output).toMatchSchema(Invoice)` |
-| **4** | **Semantic (LLM-as-judge)** | Low; expensive | `expect(run.lastMessage).toSatisfyRubric('confirms file created', { judge: 'claude-haiku-4-5', threshold: 0.8 })` |
-| **5** | **Pattern/heuristic** | Brittle; use sparingly | `expect(run.output).toContain('done')` |
+| **3** | **Structured-output assertions** | High (when applicable) | `expect(agent.output).toMatchSchema(Invoice)` |
+| **4** | **Semantic (LLM-as-judge)** | Low; expensive | `expect(agent.lastMessage).toSatisfyRubric('confirms file created', { threshold: 0.8 })` |
+| **5** | **Pattern/heuristic** | Brittle; use sparingly | `expect(agent.output).toContain('done')` |
 
-**Allow/deny/required** lists are more resilient than strict sequences (tolerate different valid
-paths to the same outcome):
+**Allow/deny/required** lists tolerate different valid paths to the same outcome:
 
 ```ts
-expect(run).toUseToolsFrom(['read_file','search']);   // allow-list
-expect(run).not.toHaveToolCall('rm');                 // deny-list (safety)
-expect(run).toHaveCalledAll(['plan','write','test']); // required, order-insensitive
+expect(agent).toUseToolsFrom(['read_file','search']);   // allow-list
+expect(agent).not.toHaveToolCall('rm');                 // deny-list (safety)
+expect(agent).toHaveCalledAll(['plan','write','test']); // required, order-insensitive
 ```
+
+> **Naming:** assertions take the **`agent`** session (`expect(agent)`), and tool args are
+> **`args`** everywhere (matching the Anthropic `tool_use` block). `expect(workspace)` /
+> `expect(mcp)` take their respective fixtures (§10).
 
 ### 8.2 Web-first behavior (auto-retry over the event stream)
 
-Structural matchers **auto-retry**, polling the growing event stream until the event appears or the
-timeout fires (the DOM-re-fetch analog). Already-materialized scalars use non-retrying value
-assertions. All support `.not`.
+Structural matchers **auto-retry**, polling the growing stream until the event appears or timeout
+fires. Materialized scalars use non-retrying value assertions. All support `.not`.
 
-- `expect.poll(() => judge(run.output, rubric)).toBeGreaterThanOrEqual(0.8)` — score-until-pass.
-- `expect(async () => { … }).toPass({ timeout })` — bundle fuzzy+structural checks; **always set an
-  explicit timeout** (Playwright's unbounded default would burn money per probe).
-- **Agent-tuned intervals** default to `[1000, 2000, 5000]`, not Playwright's web `[100,250,500,1000]`.
+- `expect.poll(() => judge(agent.output, rubric)).toBeGreaterThanOrEqual(0.8)` — score-until-pass.
+- `expect(async () => { … }).toPass({ timeout })` — bundle checks; **always set an explicit
+  timeout** (unbounded default would burn money per probe).
+- **Agent-tuned intervals** default to `[1000, 2000, 5000]`.
 
 ### 8.3 Soft assertions, profiles, custom matchers
 
-- `expect.soft(...)` → accumulate *all* rubric/structural failures into a per-run **scorecard**
-  instead of aborting on the first; assert `test.info().errors` at the end.
+- `expect.soft(...)` → accumulate *all* failures into a per-run **scorecard**; assert
+  `test.info().errors` at the end.
 - `expect.configure({ timeout, soft })` → eval **profiles**: `judgeExpect` (slow, soft) vs
-  `strictExpect` (fast, hard — for safety gates).
-- All Agentry matchers are `expect.extend` custom matchers returning `{ pass, message, name,
-  expected, actual }`, honoring `this.isNot` and `this.timeout` so they compose with `configure`,
-  `poll`, and `toPass`. Rich `message` output (judge rationale, schema diff, arg diff) is what
+  `strictExpect` (fast, hard — safety gates).
+- All matchers are `expect.extend` customs returning `{ pass, message, name, expected, actual }`,
+  honoring `this.isNot`/`this.timeout`. Rich `message` (judge rationale, schema diff, arg diff)
   makes failures debuggable.
 
 ### 8.4 Snapshots with semantic tolerance (the `toMatchAriaSnapshot` analog)
 
-Snapshot the **structural execution trace** (tool-call tree / message skeleton) as YAML where
-stable structure is exact and volatile leaves use regex or are omitted (`/children: contain` by
-default tolerates incidental extra calls). For free-text, store a rubric/embedding baseline and pass
-within a **semantic-distance threshold** (the `maxDiffPixelRatio`/`threshold` analog). Re-baseline
-via an `--update-snapshots`-style workflow (`missing`/`changed`/`all`).
+Snapshot the **structural execution trace** (tool-call tree / message skeleton) as YAML — stable
+structure exact, volatile leaves regex/omitted (`/children: contain` tolerates incidental calls).
+For free-text, store a rubric/embedding baseline; pass within a **semantic-distance threshold**.
+Re-baseline via `--update-snapshots` (`missing`/`changed`/`all`).
+
+### 8.5 LLM-as-judge protocol (the Agentry-specific differentiator — now specified)
+
+- **Rubric:** a natural-language criterion, or a structured rubric of weighted points.
+- **Judge call:** a *different/cheaper* model than the agent under test (avoids echo-chamber bias),
+  returning structured `{ score: 0..1, rationale: string }`.
+- **Voting & threshold (reconciled):** `votes: N` runs **N independent judge samples**; the
+  **aggregate score = mean** of the N; the assertion **passes iff mean ≥ threshold**. (So config
+  `{ votes: 3, threshold: 0.66 }` = 3 samples, pass if mean ≥ 0.66; a per-assertion `threshold:
+  0.8` overrides.) Single continuous scale — no separate majority-vote semantics.
+- **Determinism in replay:** judge requests/responses are themselves recorded into the cassette, so
+  replay re-evaluates **for free and deterministically** (no judge calls in CI replay).
+- **Cost:** N judge calls per assertion per live/record run; counts against the budget (§13). Docs
+  label Tier-4 "expensive — use sparingly."
 
 ---
 
 ## 9. Per-Target Assertion Surfaces
 
-All four targets ride the shared spine; each adds fixtures + matchers over the event stream.
+Four target types ride the shared spine; each adds fixtures + a matcher pack. **MCP and LLM
+gateways** are observed at the transport layer (CH1/CH3). **Skills and plugins** are observed by
+their *effect on the wire* (CH1) and by **differential** comparison (CH6) — see §9.2.
 
-### 9.1 MCP gateways/servers (richest, most concrete)
+### 9.1 MCP gateways/servers (transport-observed; richest, most concrete)
 Tool discovery (`toExposeTools`), invocation (`toHaveToolCall`), response schema (`toMatchSchema`),
 content, resources/prompts exposure, error codes (`toHaveError({ code: -32602 })`), connection
-lifecycle, concurrency, protocol compliance (`toBeValidMcpProtocol`). Fixture: `MockMcpServer` with
-programmable responses; or a real server fronted by the MCP proxy with state-reset hooks.
+lifecycle, concurrency, protocol compliance (`toBeValidMcpProtocol`). Fixture: `MockMcpServer`
+(programmable) **or** a real server via the proxy/shim with lifecycle + state-reset hooks (run under
+`mcp-live`).
 
-### 9.2 Skills
-Invocation detection (`toHaveInvokedSkill`), argument matching, output content/structure,
-side-effects (`workspace.toHaveFile`), timing bounds, error handling, and **downstream behavior**
-(`run.afterSkill('x').toHaveToolCall('edit')`).
+### 9.2 Skills & plugins (effect-observed — redefined objectives)
 
-### 9.3 Plugins
-Load verification (`toHaveLoadedPlugin`), hook execution (`toHaveHookExecution('pre-commit')`),
-context injection (`run.systemPrompt.toContain(...)`), tool registration
-(`agent.availableTools.toContain(...)`), and behavioral diff (same prompt with/without plugin).
+Skills and plugins are **not** asserted by "did the internal thing fire?" but by **observable
+effect contracts**, because both fundamentally work by *mutating what the agent sends to the model*
+(visible on CH1) and *changing its behavior* (provable by CH6 differential). Each matcher is tagged
+`observed` or `inferred`.
 
-### 9.4 LLM gateways
+**Observable signals**
+
+| Signal | Channel | Confidence |
+|---|---|---|
+| Skill body / plugin context injected into the request | CH1 | observed |
+| Plugin tools registered / skill made available | CH1 (`tools[]`) / CH3 | observed |
+| Hook fired → injected `<system-reminder>` | CH1 (next request) | observed |
+| Hook blocked/modified a tool call | CH2 (+CH1) | observed |
+| Plugin's MCP servers reachable | CH3 | observed |
+| Downstream tool/MCP calls a skill drives | CH2/CH3 | observed |
+| Side-effects / artifacts | CH4 | observed |
+| Explicit native invocation event + args | CH2 | observed *if CLI surfaces it* |
+| Behavioral modification (the whole point) | CH6 differential | observed *as a delta* |
+| "Caused this decision" / internal "loaded" state | — | inferred → use CH6 |
+
+**Matcher pack (reframed):**
+```ts
+expect(agent).toInjectContext(/skill: seo-audit/);                 // CH1, observed
+expect(agent).toRegisterTools(['notepad_write','notepad_read']);   // CH1/CH3, observed
+expect(agent).toFireHook('PreToolUse', { injects: /system-reminder/ });  // CH1, observed
+expect(agent).toBlockTool('rm', { byHook: true });                 // CH2, observed
+expect(agent.afterSkill('seo-audit')).toHaveToolCall('edit');      // CH2, observed (downstream)
+expect(agent).toHaveInvokedSkill('seo-audit');                     // CH2, observed-if-surfaced (else inferred)
+await expect(agent).toChangeBehaviorVs(baseline, { in: 'toolCalls' }); // CH6, the hero technique
+```
+
+**The differential method (CH6) is the backbone:** run the scenario **with vs. without** the
+skill/plugin (or with/without a specific hook) and assert the intended *delta* in CH1–CH5. It needs
+zero internal observability and is fully agent-agnostic — the Playwright-philosophy fit ("test what
+it did"). `agentry` provides a `baseline` fixture to capture the no-skill/no-plugin run.
+
+### 9.3 LLM gateways (transport-observed)
 Routing (`toHaveRoutedTo('anthropic')`), fallback (`toHaveFallenBackTo('openai')`), cache behavior,
 rate-limit handling, request/response transformation, token-count accuracy, latency overhead, error
-propagation fidelity. Naturally enabled by the LLM interception layer the spine already needs.
+propagation fidelity. Enabled directly by the LLM interception layer the spine already needs.
 
 ---
 
@@ -392,7 +571,7 @@ test.describe('filesystem MCP server', () => {
   test('reads a file via the MCP tool', async ({ agent, workspace, mcp }) => {
     await workspace.write('notes/todo.md', '- buy milk');
 
-    const call = agent.waitForToolCall('read_file', r => r.params.path.endsWith('todo.md'));
+    const call = agent.waitForToolCall('read_file', e => e.args.path.endsWith('todo.md'));
     await agent.prompt('What is on my todo list in notes/todo.md?');
     await agent.waitForIdle();
 
@@ -407,24 +586,25 @@ test.describe('filesystem MCP server', () => {
     // Budget
     await expect(agent).toFinishWithin({ tokens: 20_000, turns: 4 });
 
-    // Tier 4 — semantic (opt-in, cheap judge)
-    await expect.soft(agent.lastMessage)
-      .toSatisfyRubric('mentions buying milk', { judge: 'claude-haiku-4-5', threshold: 0.7 });
+    // Tier 4 — semantic (opt-in, recorded for free replay)
+    await expect.soft(agent.lastMessage).toSatisfyRubric('mentions buying milk', { threshold: 0.7 });
 
     expect(await call).toBeDefined();
   });
 });
 ```
 
-- **Fixtures** (DI by name, Playwright-style): `agent` (running session), `workspace` (sandbox),
-  `mcp` (mock/proxied MCP server), `gateway` (LLM interceptor handle), `judge` (LLM-as-judge
-  client). Worker-scoped for expensive resources (warm MCP container, model pool); test-scoped for
-  isolation (fresh workspace + transcript per scenario). Auto fixtures attach always-on
-  token/cost + transcript capture.
-- **Multi-turn / branching / conditional flow**: drive `prompt → waitForIdle → assert → prompt`;
-  fork a session at turn N; `if (agent.askedForClarification) …`.
-- **Projects = the agent × model matrix** (the browsers analog): one project per
-  `(agent, model)`; shared scenarios run across all. Capability gates skip unsupported combos.
+**Fixtures** (DI by name): `agent` (running `AgentSession`), `workspace` (`Sandbox`), `mcp`
+(`MockMcpServer` | proxied-server handle, exposing `toHaveReceived`/`toExposeTools`/lifecycle),
+`gateway` (LLM interceptor handle), `judge` (LLM-as-judge client), `baseline` (no-skill/no-plugin
+comparison run for CH6). Worker-scoped for expensive resources; test-scoped for isolation; auto
+fixtures attach always-on token/cost + transcript capture.
+
+**Multi-turn / branching / conditional:** `prompt → waitForIdle → assert → prompt`; `agent.fork()`
+to branch a session at the current turn; `if (agent.askedForClarification) …`.
+
+**Projects = the agent × model matrix** (the browsers analog); capability gates skip unsupported
+combos.
 
 ---
 
@@ -435,23 +615,27 @@ import { defineConfig } from 'agentry';
 
 export default defineConfig({
   testDir: './tests',
-  mode: process.env.CI ? 'replay' : 'replay',     // live runs are nightly, tag-gated
+  mode: 'replay',                                 // default; live/mcp-live selected per-scenario via tags
   fullyParallel: true,
+  workers: process.env.CI ? '50%' : undefined,    // bounded by API rate limits (§13)
   retries: process.env.CI ? 2 : 0,                // flaky-LLM tolerance / pass@k signal
   timeout: 120_000,                               // per-scenario run timeout
-  expect: { timeout: 10_000, judge: { model: 'claude-haiku-4-5', votes: 3, threshold: 0.66 } },
+  expect: {
+    timeout: 10_000,
+    judge: { model: 'claude-haiku-4-5', votes: 3, threshold: 0.66 },  // §8.5: 3 samples, mean ≥ 0.66
+  },
 
-  budget: { perTest: { usd: 0.25, tokens: 100_000 }, perRun: { usd: 5 } },   // hard caps
-  sandbox: { isolation: 'directory', network: 'allowlist', homeRemap: true },
-  redact: [/sk-[A-Za-z0-9]+/, process.env.ANTHROPIC_API_KEY!],
+  budget: { perTest: { usd: 0.25, tokens: 100_000 }, perRun: { usd: 5 } },   // layered caps (§13)
+  sandbox: { isolation: 'directory', network: 'allowlist', homeRemap: true }, // directory = reproducibility, not security
+  redact: { patterns: [/sk-[A-Za-z0-9]{20,}/], env: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'] },
 
   use: { agent: 'claude', model: 'claude-opus-4-8', trace: 'retain-on-failure' },
 
   projects: [
-    { name: 'setup', testMatch: /global\.setup\.ts/ },          // provision sandbox / warm MCP
-    { name: 'claude-opus',  use: { agent: 'claude', model: 'claude-opus-4-8'  }, dependencies: ['setup'] },
-    { name: 'claude-sonnet',use: { agent: 'claude', model: 'claude-sonnet-4-6'}, dependencies: ['setup'] },
-    // fast-follow:
+    { name: 'setup', testMatch: /global\.setup\.ts/ },
+    { name: 'claude-opus',   use: { agent: 'claude', model: 'claude-opus-4-8'   }, dependencies: ['setup'] },
+    { name: 'claude-sonnet', use: { agent: 'claude', model: 'claude-sonnet-4-6' }, dependencies: ['setup'] },
+    // committed v1 objective, spike-gated (§4.3):
     // { name: 'codex',  use: { agent: 'codex'  } },
     // { name: 'gemini', use: { agent: 'gemini' } },
     // { name: 'cursor', use: { agent: 'cursor' } },
@@ -460,9 +644,10 @@ export default defineConfig({
 });
 ```
 
-**Model pinning is mandatory** — config must lock a dated snapshot, never a `-latest` alias, or
-provider updates silently break the suite. Agentry injects `temperature=0` / `seed` where the agent
-exposes them.
+**Model pinning is enforced:** Agentry **errors at config-load** if a `model` lacks a dated
+snapshot suffix (rejects `-latest`/aliases). It injects `temperature=0` / `seed` where the agent
+exposes them. `redact.env` reads values at runtime (no unsafe `!` assertions); unset vars are
+skipped.
 
 ---
 
@@ -471,9 +656,10 @@ exposes them.
 | Command | Purpose |
 |---|---|
 | `agentry init` | Scaffold `agentry.config.ts` + a first test + `.mcp.json` stub. |
-| `agentry test [--mode replay\|live\|record\|dry] [--grep @tag] [--project x] [--shard i/n] [-u]` | Run scenarios. |
-| `agentry record <test>` | Run live and write/refresh cassettes + golden snapshots. |
+| `agentry test [--mode replay\|mcp-live\|live\|record\|dry] [--grep @tag] [--project x] [--shard i/n] [-u]` | Run scenarios. |
+| `agentry record [test] [--repair]` | Run live and write/refresh cassettes + golden snapshots (`--repair` re-binds from first divergence). |
 | `agentry show-trace <bundle>` | Open the trace viewer (CLI + client-side hosted viewer). |
+| `agentry doctor` | Probe installed agent CLIs, print the §4.3 capability matrix for this machine. |
 | `agentry codegen [scenario]` | *(deferred)* drive an agent and generate a test from the event stream. |
 
 `forbidOnly`, `maxFailures`, and `globalTimeout` double as **CI guards and hard spend caps**.
@@ -482,47 +668,58 @@ exposes them.
 
 ## 13. Sandboxing, Security & Cost
 
-- **Isolation levels** (user choice): `directory` (temp dir + copied fixtures; dev default) →
-  `container` (Docker; CI) → `vm` (only for system-level agent actions). The subtle bit: agent CLIs
-  read `~/.claude/`, `CLAUDE.md`, `.claude/settings.json` from fixed paths — sandbox **remaps HOME**
-  or uses overlay/containers so host config never leaks in and host FS is never touched.
-- **Network**: default-deny allowlist (LLM API + test MCP servers only); blocks an agent that tries
-  to `curl` production.
-- **Secrets**: per-test env injection (agent never sees host secrets it shouldn't); an **active
-  redaction layer** scrubs secrets from transcripts, traces, logs, and reports.
-- **Cost guard** (launch requirement, not a feature): per-turn/test/run token + dollar caps with a
-  **hard circuit-breaker** that kills the agent process within ~5s of breach and fails the test with
-  a `budget` error. Conservative default (`$0.25`/test, `$5`/run). Every report shows tokens-in/out
-  and estimated cost.
-- **Cleanup guarantees**: teardown (force-kill + workspace destroy) runs even on crash/timeout.
+**Isolation is honest about what it guarantees:**
+
+| Level | Guarantees | Use |
+|---|---|---|
+| `directory` (default) | **Reproducibility isolation only** — temp workspace + copied fixtures + HOME remap. In plain subprocess mode it **cannot** reliably block `curl`, keychain, XDG caches, or host config. | local dev |
+| `container` | True filesystem + **network** confinement (default-deny allowlist actually enforced). | CI |
+| `vm` | Full OS isolation. | agents that modify system state |
+
+- **Config & secret injection under HOME remap:** because `~/.claude` won't exist in a remapped
+  HOME, Agentry **explicitly provisions** the agent's credentials/config into the sandbox (env +
+  generated config), so the agent never reads host config *and* still functions in live/record.
+- **Network:** `allowlist` is advisory in `directory` mode and **enforced** in `container`/`vm`.
+  Docs state this plainly.
+- **Secret redaction is structural and pre-persistence:** a **secret registry** (API keys, MCP
+  creds, configured patterns) drives a redaction pipeline that scrubs JSON bodies, stderr, debug
+  logs, sidecar files, and tool outputs. **Cassette match-hashes are computed in memory on the
+  pre-redaction canonical form (§7.4); only placeholder-normalized payloads are persisted** — so
+  redaction never breaks replay matching.
+- **Budget enforcement is layered** (process-kill is a last resort, because token usage often
+  arrives *after* a response and killing mid-write corrupts cassettes / orphans MCP children):
+  1. **Preflight estimate** — refuse to start a turn projected to exceed the cap.
+  2. **Proxy-side gate** — the LLM proxy **denies the next request** once the running tally crosses
+     the cap (clean stop, cassette intact).
+  3. **CLI-native control** — pass `--max-budget-usd` (Claude) where available.
+  4. **Hard kill + cleanup** — only if the above fail; always force-kill children and destroy the
+     workspace, even on crash/timeout. Breach fails the test with a `budget` error within ~5s.
+- Every report shows tokens-in/out and estimated cost (including judge-call cost, §8.5).
 
 ---
 
 ## 14. Trace & Reporting
 
-- **Trace bundle** (zip) per run: ordered event stream + intercepted gateway traffic (full
-  req/resp, model, params) + per-step tokens/cost/latency + before/after context & FS snapshots.
-  Modes mirror Playwright: `on-first-retry`, `retain-on-failure`, plus a `live` streaming mode for
-  long runs. Viewer is **client-side / local** (traces contain prompts + keys) — `agentry
-  show-trace` and a hosted drag-drop viewer.
-- **Reporters**: `list`/`line` (local), `junit`/`json` (CI dashboards), `html` (self-contained,
-  links each scenario to its trace; default `open: 'on-failure'`), `blob` + `merge-reports` to
-  consolidate sharded agent×model matrix runs. Custom reporters aggregate **cost, latency, pass@k,
-  judge scores** per scenario/step.
+- **Trace bundle** (zip) per run: causal event graph + intercepted gateway traffic (full req/resp,
+  model, params) + per-step tokens/cost/latency + before/after context & FS snapshots + preserved
+  raw events. Modes mirror Playwright (`on-first-retry`, `retain-on-failure`) plus a `live`
+  streaming mode. Viewer is **client-side/local** (traces contain prompts + keys).
+- **Reporters:** `list`/`line` (local), `junit`/`json` (CI), `html` (self-contained, links each
+  scenario to its trace; default `open: 'on-failure'`), `blob` + `merge-reports` to consolidate
+  sharded agent×model matrix runs. Custom reporters aggregate **cost, latency, pass@k, judge
+  scores**.
 
 ---
 
 ## 15. Recording (codegen analog)
 
-Two modes (see roadmap for sequencing):
-
 | Mode | Captures | Best for |
 |---|---|---|
 | **Event-stream record** (primary) | Normalized stream → generated replay test with golden snapshots (semantic tolerance for free text) | Headless agents, CI, stable golden tests |
-| **PTY/TUI interactive record** | Keystrokes + terminal output of an interactive CLI | Human-in-the-loop sessions; higher fidelity, noisier |
+| **PTY/TUI interactive record** (deferred) | Keystrokes + terminal output of an interactive CLI | Human-in-the-loop sessions; higher fidelity, noisier |
 
-"Pick assertion" (choose a captured event, insert a matcher at a chosen tolerance) and "record at
-cursor" (append turns) mirror codegen's pick-locator and record-at-cursor.
+"Pick assertion" (insert a matcher at a chosen tolerance on a captured event) and "record at cursor"
+(append turns) mirror codegen's pick-locator / record-at-cursor.
 
 ---
 
@@ -531,20 +728,23 @@ cursor" (append turns) mirror codegen's pick-locator and record-at-cursor.
 | Playwright | Agentry |
 |---|---|
 | Browser via CDP | Agent CLI via headless `stream-json` (driver) |
-| DOM / accessibility tree | Normalized event stream (§6) |
+| DOM / accessibility tree | Causal normalized event graph (§6) |
 | `projects` (browsers) | Agent × model matrix |
 | Setup project / `dependencies` | Provision sandbox / warm MCP / agent auth |
-| Fixtures (`page`,`context`,`request`) | `agent`, `workspace`/`transcript`, `gateway` |
+| Fixtures (`page`,`context`,`request`) | `agent`, `workspace`, `mcp`/`gateway`, `baseline` |
 | Web-first auto-retrying assertions | Structural matchers polling the event stream |
-| `expect.poll` / `toPass` | Score-until-pass judge loops / bundled fuzzy checks |
+| `expect.poll` / `toPass` | Score-until-pass judge loops / bundled checks |
 | `expect.soft` / `configure` | Per-run scorecards / eval profiles |
 | `toMatchAriaSnapshot` | Structural trace snapshot (regex/omit leaves) |
 | `toHaveScreenshot` (pixels, opt-in) | Terminal/TUI snapshot via PTY driver (opt-in) |
 | `page.route` / `Route` verbs | LLM+MCP interception (fulfill/abort/continue/fallback/fetch) |
-| `routeFromHAR` / `recordHar` | Cassettes (record/replay), hermetic vs record-extend |
+| `routeFromHAR` (stateless URL+body) | Cassettes (**ordered, session-positional** matching) |
+| HTTP proxy | LLM base-URL override + MCP **http/sse proxy or stdio shim** |
 | `routeWebSocket` | SSE/stdio streaming interception |
-| `waitForResponse` | `waitForToolCall` / `waitForLLMResponse` |
+| `waitForResponse` | `waitForToolCall` / `waitForLLMRequest` |
 | Workers / retries / sharding | Parallel sandboxes / pass@k / matrix distribution |
 | Trace viewer | Agent trace viewer (events + gateway + cost/latency) |
 | codegen | Event-stream record → golden test |
 | `forbidOnly`/`maxFailures`/`globalTimeout` | CI guards + hard spend caps |
+| — (no analog) | Differential (with/without) testing for skills & plugins (CH6) |
+| — (no analog) | Layered budget guard; structural secret redaction |
