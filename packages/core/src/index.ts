@@ -6,3 +6,5 @@ export * from './run';
 export * from './sandbox';
 export * from './config';
 export * from './assert';
+export * from './cassette';
+export * from './driver';
