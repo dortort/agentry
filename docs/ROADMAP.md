@@ -86,6 +86,14 @@ these are answered and written up in `docs/research/phase0-findings.md` (local).
 **Exit criteria:** yes/no + evidence per spike; architecture deltas folded into `SPEC.md`. A failed
 cross-agent spike (esp. 0.13) demotes that agent to post-v1 without affecting the Claude GA path.
 
+**Progress (2026-06-27, Claude reference path):** **0.1 ✅** (headless stream-json, no TTY) ·
+**0.4 ✅** (clean `result`+exit; cost/usage/timing in terminal event) · **0.2 ✅** (`ANTHROPIC_BASE_URL`
+honored; full request — system/tools/messages/params — capturable on the wire = CH1) · **0.6/0.7 🟡**
+(plugins/skills/tools/MCP-status in the `init` event and hook firing in `hook_*` events are `observed`
+via stream-json — **critic C2 substantially resolved**; skill-*body*-on-invocation still to confirm) ·
+plus config isolation via `--strict-mcp-config` ✅ and the `--max-budget-usd` native budget flag ✅.
+Full evidence in `docs/research/phase0-findings.md`. No findings contradict SPEC v2.
+
 ---
 
 ## 4. Delivery phases
@@ -180,10 +188,10 @@ firm). Still open:
    running. *(Rec: manage them + `MockMcpServer` fixture.)*
 4. **Cassette storage** — committed to the repo under test vs separate cache. *(Rec: committed for
    hermetic CI; external-store override for large ones.)*
-5. **Repo shape** — single package vs monorepo (`@agentry/core`, `/claude`, `/mcp`, `/reporters`).
-   *(Rec: monorepo.)*
-6. **Phase 0 ownership** — you run the spikes interactively (you have the CLIs), or Agentry's first
-   code *is* the spike harness?
+5. ~~**Repo shape**~~ — **RESOLVED (2026-06-27): monorepo** (`@agentry/core`, `/claude`, `/mcp`,
+   `/reporters`, …).
+6. ~~**Phase 0 ownership**~~ — **RESOLVED (2026-06-27): Agentry runs the spikes** in the owner's
+   environment (in progress — see §3 and `docs/research/phase0-findings.md`).
 
 ---
 
@@ -193,5 +201,8 @@ firm). Still open:
 - [x] Spec drafted + revised post-review (`SPEC.md` v2)
 - [x] Roadmap drafted + revised (this doc v2)
 - [x] Independent review pass (Claude critic + Codex; in `docs/research/`)
-- [ ] Phase 0 spikes
+- [~] Phase 0 spikes — **in progress**: 0.1 / 0.2 / 0.4 ✅, 0.6 / 0.7 🟡, config isolation ✅;
+  remaining: MCP shim (0.3), HOME-remap (0.5), cassette canonicalization (0.9), mcp-live (0.10),
+  cross-agent (0.11–0.13)
+- [x] Repo shape = monorepo; Phase 0 ownership = Agentry-runs (§7)
 - [ ] Implementation
