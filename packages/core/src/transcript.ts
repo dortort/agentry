@@ -24,6 +24,12 @@ export interface Transcript {
   model?: string;
   events: AgentEvent[];
   result: RunResult;
+  /**
+   * Post-run contents of created/modified sandbox files, keyed by relative path.
+   * Materialized into the sandbox on replay so side-effect assertions
+   * (e.g. toHaveFile) work without re-running the agent.
+   */
+  files?: Record<string, string>;
 }
 
 const FALLBACK_RESULT: RunResult = {
@@ -33,13 +39,17 @@ const FALLBACK_RESULT: RunResult = {
 };
 
 /** Capture a completed RunRecord as a serializable transcript. */
-export function recordTranscript(rec: RunRecord, meta?: { prompt?: string; model?: string }): Transcript {
+export function recordTranscript(
+  rec: RunRecord,
+  meta?: { prompt?: string; model?: string; files?: Record<string, string> },
+): Transcript {
   return {
     version: TRANSCRIPT_VERSION,
     prompt: meta?.prompt,
     model: meta?.model,
     events: rec.events,
     result: rec.result ?? { ...FALLBACK_RESULT, usage: rec.usage },
+    files: meta?.files,
   };
 }
 

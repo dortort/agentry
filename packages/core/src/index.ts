@@ -9,3 +9,5 @@ export * from './assert';
 export * from './cassette';
 export * from './driver';
 export * from './transcript';
+export * from './runner';
+export * from './reporter';

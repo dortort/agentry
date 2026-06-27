@@ -113,10 +113,18 @@ export class RunRecord implements RunView {
   }
 }
 
-/** Coerce a matcher's `received` (RunRecord | RunView | AgentSession) into a RunView. */
+/** Something that can produce a RunView (e.g. the live `agent` fixture). */
+export interface RunViewProvider {
+  toRunView(): RunView;
+}
+
+/** Coerce a matcher's `received` (RunRecord | RunView | RunViewProvider) into a RunView. */
 export function asRunView(received: unknown): RunView {
-  if (received && typeof received === 'object' && 'events' in received && 'toolCalls' in received) {
-    return received as RunView;
+  if (received && typeof received === 'object') {
+    if (typeof (received as RunViewProvider).toRunView === 'function') {
+      return (received as RunViewProvider).toRunView();
+    }
+    if ('events' in received && 'toolCalls' in received) return received as RunView;
   }
   throw new TypeError('expected an Agentry RunRecord/RunView (got something else)');
 }
