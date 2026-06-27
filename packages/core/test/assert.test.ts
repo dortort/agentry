@@ -71,3 +71,34 @@ describe('side-effect matcher', () => {
     await v(expect(b).toHaveFile('missing.md')).rejects.toThrow();
   });
 });
+
+describe('skill/plugin matchers', () => {
+  const f = new EventFactory('r', () => 0);
+  const r = new RunRecord([
+    f.make({ type: 'plugin', name: 'oh-my-claudecode', event: 'loaded', confidence: 'observed' }, { turnId: 'init', source: 'agent', capability: 'plugin' }),
+    f.make(
+      {
+        type: 'plugin',
+        name: 'SessionStart:startup',
+        event: 'hook-fired',
+        confidence: 'observed',
+        detail: { hookEvent: 'SessionStart', output: '<system-reminder>hi</system-reminder>' },
+      },
+      { turnId: 'hooks', source: 'agent', capability: 'plugin' },
+    ),
+  ]);
+
+  it('toHaveLoadedPlugin (+ negation)', () => {
+    v(() => expect(r).toHaveLoadedPlugin('oh-my-claudecode')).not.toThrow();
+    v(() => expect(r).toHaveLoadedPlugin('missing')).toThrow();
+    v(() => expect(r).not.toHaveLoadedPlugin('missing')).not.toThrow();
+  });
+
+  it('toFireHook by name/event and injected content', () => {
+    v(() => expect(r).toFireHook('SessionStart:startup')).not.toThrow(); // by name
+    v(() => expect(r).toFireHook('SessionStart')).not.toThrow(); // by hookEvent
+    v(() => expect(r).toFireHook('SessionStart', { injects: /system-reminder/ })).not.toThrow();
+    v(() => expect(r).toFireHook('Nope')).toThrow();
+    v(() => expect(r).toFireHook('SessionStart', { injects: 'absent-text' })).toThrow();
+  });
+});

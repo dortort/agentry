@@ -133,6 +133,44 @@ export const matchers = {
           : `expected "${rel}" to contain ${opts.containing}`,
     };
   },
+
+  // ── Skills & plugins: observable-effect matchers (SPEC §9.2) ──
+  // MVP keys off natively-observed signals (init plugin-load, hook-fire events).
+  // CH1 context-injection / CH6 differential matchers arrive with the LLM proxy.
+
+  toHaveLoadedPlugin(received: unknown, name: string | RegExp) {
+    const match = (n: string) => (typeof name === 'string' ? n === name : name.test(n));
+    const loaded = asRunView(received).plugins.filter((p) => p.payload.event === 'loaded');
+    const pass = loaded.some((p) => match(p.payload.name));
+    return {
+      pass,
+      message: () =>
+        `expected plugin ${name} to be loaded\nloaded: [${loaded.map((p) => p.payload.name).join(', ')}]`,
+    };
+  },
+
+  toFireHook(received: unknown, hook: string | RegExp, opts?: { injects?: string | RegExp }) {
+    const match = (n: string) => (typeof hook === 'string' ? n === hook : hook.test(n));
+    const fired = asRunView(received).plugins.filter((p) => p.payload.event === 'hook-fired');
+    const candidates = fired.filter((p) => {
+      const detail = p.payload.detail as { hookEvent?: string } | undefined;
+      return match(p.payload.name) || match(String(detail?.hookEvent ?? ''));
+    });
+    let pass = candidates.length > 0;
+    if (pass && opts?.injects != null) {
+      const inj = opts.injects;
+      pass = candidates.some((p) => {
+        const s = JSON.stringify(p.payload.detail ?? '');
+        return inj instanceof RegExp ? inj.test(s) : s.includes(inj);
+      });
+    }
+    return {
+      pass,
+      message: () =>
+        `expected hook ${hook}${opts?.injects ? ` injecting ${opts.injects}` : ''} to fire\n` +
+        `fired: [${fired.map((p) => p.payload.name).join(', ')}]`,
+    };
+  },
 };
 
 baseExpect.extend(matchers);
@@ -148,5 +186,7 @@ declare module 'expect' {
     toHaveMcpRequest(matcher: { method?: string; server?: string; name?: string }): R;
     toFinishWithin(limits: { tokens?: number; turns?: number }): R;
     toHaveFile(rel: string, opts?: { containing?: string | RegExp }): Promise<R>;
+    toHaveLoadedPlugin(name: string | RegExp): R;
+    toFireHook(hook: string | RegExp, opts?: { injects?: string | RegExp }): R;
   }
 }
