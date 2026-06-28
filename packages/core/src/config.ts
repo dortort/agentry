@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 // ── Run modes (SPEC §5) ──────────────────────────────────────────────────────
 
-export type RunMode = 'replay' | 'mcp-live' | 'live' | 'record' | 'dry';
+export type RunMode = 'replay' | 'wire-replay' | 'mcp-live' | 'live' | 'record' | 'dry';
 
 // ── Sub-config interfaces ────────────────────────────────────────────────────
 
@@ -88,6 +88,8 @@ export interface AgentryConfig {
   budget?: BudgetConfig;
   sandbox?: SandboxConfig;
   redact?: RedactConfig;
+  /** Upstream the LLM proxy forwards to (positioning seam, SPEC §7). Default Anthropic API. */
+  upstreamBaseUrl?: string;
   use?: UseOptions;
   projects?: ProjectConfig[];
   reporter?: unknown;
@@ -120,6 +122,7 @@ export interface ResolvedConfig {
     patterns: RegExp[];
     env: string[];
   };
+  upstreamBaseUrl: string;
   use: UseOptions;
   projects: ProjectConfig[];
   reporter: unknown;
@@ -154,7 +157,7 @@ export function isPinnedModel(model: string): boolean {
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
 
-const RunModeSchema = z.enum(['replay', 'mcp-live', 'live', 'record', 'dry']);
+const RunModeSchema = z.enum(['replay', 'wire-replay', 'mcp-live', 'live', 'record', 'dry']);
 
 const JudgeConfigSchema = z.object({
   model: z.string().optional(),
@@ -216,6 +219,7 @@ const AgentryConfigSchema = z.object({
   budget: BudgetConfigSchema.optional(),
   sandbox: SandboxConfigSchema.optional(),
   redact: RedactConfigSchema.optional(),
+  upstreamBaseUrl: z.string().optional(),
   use: UseOptionsSchema.optional(),
   projects: z.array(ProjectConfigSchema).optional(),
   reporter: z.unknown().optional(),
@@ -242,6 +246,7 @@ const DEFAULTS = {
     network: 'allowlist',
     homeRemap: true,
   },
+  upstreamBaseUrl: 'https://api.anthropic.com',
 } as const;
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -326,6 +331,7 @@ export function resolveConfig(input: AgentryConfig): ResolvedConfig {
       patterns: c.redact?.patterns ?? [],
       env: c.redact?.env ?? [],
     },
+    upstreamBaseUrl: c.upstreamBaseUrl ?? DEFAULTS.upstreamBaseUrl,
     use: c.use ?? {},
     projects,
     reporter: c.reporter,

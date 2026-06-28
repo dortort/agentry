@@ -17,6 +17,8 @@ import {
   serializeTranscript,
   parseTranscript,
 } from './transcript';
+import { startLlmProxy, SingleUpstream, type StartedProxy } from './proxy';
+import { serializeCassette, parseCassette } from './cassette';
 import { expect as agentryExpect } from './assert';
 import type { ResolvedConfig, RunMode } from './config';
 
@@ -100,6 +102,7 @@ export class AgentHandle implements RunViewProvider {
     private readonly driver: AgentDriver,
     private readonly base: { model: string; env?: Record<string, string>; maxBudgetUSD?: number },
     private readonly sandbox: Sandbox,
+    private readonly proxy?: StartedProxy,
   ) {}
 
   toRunView(): RunView {
@@ -134,7 +137,9 @@ export class AgentHandle implements RunViewProvider {
     const fsEvents: AgentEvent[] = changes.map((c) =>
       this.fsFactory.make({ type: 'fs', op: c.op, path: c.path }, { turnId: 'fs', source: 'sandbox' }),
     );
-    const merged = new RunRecord([...rec.events, ...fsEvents], rec.result);
+    // Merge CH1 events captured by the LLM proxy during this run (if proxy-enabled).
+    const proxyEvents = this.proxy ? [...this.proxy.events] : [];
+    const merged = new RunRecord([...rec.events, ...proxyEvents, ...fsEvents], rec.result);
     this.record = merged;
     return merged;
   }
@@ -175,6 +180,22 @@ export function transcriptPathFor(t: RegisteredTest, rootDir: string): string {
   return join(dir, `${sanitize([...t.suite, t.name].join('--'))}.json`);
 }
 
+/** Wire cassette path — a sibling of the transcript (`*.wire.json`). */
+export function wireCassettePathFor(t: RegisteredTest, rootDir: string): string {
+  return transcriptPathFor(t, rootDir).replace(/\.json$/, '.wire.json');
+}
+
+/** Build a redactor that replaces configured patterns + env-var values with a placeholder. */
+function makeRedactor(redact: ResolvedConfig['redact']): (text: string) => string {
+  const envValues = redact.env.map((n) => process.env[n]).filter((v): v is string => !!v);
+  return (text: string) => {
+    let out = text;
+    for (const re of redact.patterns) out = out.replace(re, '<redacted>');
+    for (const v of envValues) out = out.split(v).join('<redacted>');
+    return out;
+  };
+}
+
 export async function runTests(tests: RegisteredTest[], deps: RunnerDeps): Promise<TestResult[]> {
   const results: TestResult[] = [];
   for (const t of tests) results.push(await runOne(t, deps));
@@ -196,9 +217,11 @@ async function runOne(t: RegisteredTest, deps: RunnerDeps): Promise<TestResult> 
   }
 
   const sandbox = await Sandbox.create({ prefix: 'agentry-run-' });
+  let proxy: StartedProxy | undefined;
   try {
     let driver: AgentDriver;
     const transcriptPath = transcriptPathFor(t, deps.config.testDir);
+    const wirePath = wireCassettePathFor(t, deps.config.testDir);
 
     if (deps.mode === 'replay') {
       if (!existsSync(transcriptPath)) {
@@ -222,12 +245,40 @@ async function runOne(t: RegisteredTest, deps: RunnerDeps): Promise<TestResult> 
         };
       }
       driver = deps.liveDriver;
+
+      // Start the LLM proxy for spawn modes (record / live / mcp-live / wire-replay).
+      const proxyMode = deps.mode === 'wire-replay' ? 'wire-replay' : deps.mode === 'record' ? 'record' : 'live';
+      let wireCassette;
+      if (deps.mode === 'wire-replay') {
+        if (!existsSync(wirePath)) {
+          return {
+            ...base,
+            status: 'failed',
+            durationMs: now() - start,
+            error: `no wire cassette (expected ${wirePath}). Run \`agentry record\` first.`,
+          };
+        }
+        wireCassette = parseCassette(await readFile(wirePath, 'utf8'));
+      }
+      proxy = await startLlmProxy({
+        mode: proxyMode,
+        sessionId: sanitize([...t.suite, t.name].join('--')),
+        factory: new EventFactory('llm'),
+        upstream: new SingleUpstream(deps.config.upstreamBaseUrl),
+        cassette: wireCassette,
+        redact: makeRedactor(deps.config.redact),
+      });
     }
 
     const handle = new AgentHandle(
       driver,
-      { model, maxBudgetUSD: deps.config.budget.perTest.usd },
+      {
+        model,
+        env: proxy ? { ANTHROPIC_BASE_URL: proxy.url } : undefined,
+        maxBudgetUSD: deps.config.budget.perTest.usd,
+      },
       sandbox,
+      proxy,
     );
     const fixtures: TestFixtures = { agent: handle, workspace: sandbox, mcp: handle, expect: agentryExpect };
 
@@ -242,6 +293,13 @@ async function runOne(t: RegisteredTest, deps: RunnerDeps): Promise<TestResult> 
       });
       await mkdir(dirname(transcriptPath), { recursive: true });
       await writeFile(transcriptPath, serializeTranscript(transcript), 'utf8');
+
+      // Persist the wire cassette for future hermetic wire-replay.
+      const cass = proxy?.cassette();
+      if (cass && cass.entries.length > 0) {
+        await mkdir(dirname(wirePath), { recursive: true });
+        await writeFile(wirePath, serializeCassette(cass), 'utf8');
+      }
     }
 
     // Post-hoc budget check (MVP; preflight + proxy-gate are later — SPEC §13).
@@ -266,6 +324,7 @@ async function runOne(t: RegisteredTest, deps: RunnerDeps): Promise<TestResult> 
       error: err instanceof Error ? (err.stack ?? err.message) : String(err),
     };
   } finally {
+    await proxy?.stop();
     await sandbox.cleanup();
   }
 }
