@@ -8,6 +8,7 @@
  */
 import { expect as baseExpect } from 'expect';
 import { asRunView } from './run';
+import { collectRequestText } from './llm';
 import type { Sandbox } from './sandbox';
 
 /** Deep "expected is a subset of actual" match, with RegExp leaves supported. */
@@ -191,6 +192,34 @@ export const matchers = {
         `fired: [${fired.map((p) => p.payload.name).join(', ')}]`,
     };
   },
+
+  /** CH1: assert injected context (skill body / hook reminder) appears on the wire. */
+  toInjectContext(received: unknown, pattern: string | RegExp) {
+    const reqs = asRunView(received).llmRequests;
+    const text = reqs.map((r) => collectRequestText(r.payload)).join('\n');
+    const pass = pattern instanceof RegExp ? pattern.test(text) : text.includes(pattern);
+    return {
+      pass,
+      message: () =>
+        reqs.length === 0
+          ? `expected injected context ${pattern}, but no llm_request events were captured (is the LLM proxy enabled?)`
+          : `expected the request context to ${pass ? 'NOT ' : ''}contain ${pattern}`,
+    };
+  },
+
+  /** CH1: assert these tools were declared to the model (e.g. registered by a plugin). */
+  toRegisterTools(received: unknown, names: string[]) {
+    const declared = new Set(asRunView(received).llmRequests.flatMap((r) => (r.payload.tools ?? []).map((t) => t.name)));
+    const missing = names.filter((n) => !declared.has(n));
+    const pass = missing.length === 0;
+    return {
+      pass,
+      message: () =>
+        pass
+          ? `expected NOT to register all of [${names.join(', ')}]`
+          : `expected tools [${names.join(', ')}] to be declared; missing [${missing.join(', ')}]`,
+    };
+  },
 };
 
 baseExpect.extend(matchers);
@@ -209,6 +238,8 @@ declare module 'expect' {
     toHaveFile(rel: string, opts?: { containing?: string | RegExp }): Promise<R>;
     toHaveLoadedPlugin(name: string | RegExp): R;
     toFireHook(hook: string | RegExp, opts?: { injects?: string | RegExp }): R;
+    toInjectContext(pattern: string | RegExp): R;
+    toRegisterTools(names: string[]): R;
     // MCP fixture matchers — implemented in @agentry/mcp (signatures declared here
     // so 'expect' resolves; runtime extend lives in that package).
     toExposeTools(names: string[]): R;

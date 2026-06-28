@@ -115,3 +115,38 @@ describe('schema matcher (Tier 3)', () => {
     v(() => expect({ id: 'x' }).not.toMatchSchema(Invoice)).not.toThrow();
   });
 });
+
+describe('CH1 matchers (toInjectContext, toRegisterTools)', () => {
+  const f = new EventFactory('r', () => 0);
+  const r = new RunRecord([
+    f.make(
+      {
+        type: 'llm_request',
+        model: 'm',
+        system: 'You are helpful. SKILL: seo-audit loaded.',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [{ name: 'Read' }, { name: 'notepad_write' }],
+        params: {},
+      },
+      { turnId: 'llm:0', source: 'llm-proxy', capability: 'llm' },
+    ),
+  ]);
+
+  it('toInjectContext finds injected context on the wire (+ negation)', () => {
+    v(() => expect(r).toInjectContext(/seo-audit/)).not.toThrow();
+    v(() => expect(r).toInjectContext('SKILL: seo-audit loaded')).not.toThrow();
+    v(() => expect(r).toInjectContext('not-present')).toThrow();
+    v(() => expect(r).not.toInjectContext('not-present')).not.toThrow();
+  });
+
+  it('toRegisterTools checks declared tools', () => {
+    v(() => expect(r).toRegisterTools(['Read', 'notepad_write'])).not.toThrow();
+    v(() => expect(r).toRegisterTools(['missing'])).toThrow();
+    v(() => expect(r).not.toRegisterTools(['missing'])).not.toThrow();
+  });
+
+  it('toInjectContext explains when no llm_request events were captured', () => {
+    const empty = new RunRecord([]);
+    v(() => expect(empty).toInjectContext('anything')).toThrow(/no llm_request/);
+  });
+});

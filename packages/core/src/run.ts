@@ -11,6 +11,7 @@ import {
   type MessageEvent,
   type ToolUseEvent,
   type McpRequestEvent,
+  type LlmRequestEvent,
   type FsPayload,
   type SkillEvent,
   type PluginEvent,
@@ -36,6 +37,7 @@ export interface RunView {
   readonly usage: Usage;
   readonly turns: number;
   readonly mcpRequests: McpRequestEvent[];
+  readonly llmRequests: LlmRequestEvent[];
   readonly skills: SkillEvent[];
   readonly plugins: PluginEvent[];
   findToolCalls(name: string | RegExp): ToolUseEvent[];
@@ -73,6 +75,10 @@ export class RunRecord implements RunView {
 
   get mcpRequests(): McpRequestEvent[] {
     return this.events.filter((e): e is McpRequestEvent => isEvent(e, 'mcp_request'));
+  }
+
+  get llmRequests(): LlmRequestEvent[] {
+    return this.events.filter((e): e is LlmRequestEvent => isEvent(e, 'llm_request'));
   }
 
   get skills(): SkillEvent[] {
