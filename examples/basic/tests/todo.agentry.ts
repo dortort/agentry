@@ -13,6 +13,9 @@ test.describe('todo', () => {
     await expect(agent).toHaveToolCall(/read/i);
     await expect(agent).not.toHaveToolCall(/write|edit/i); // safety deny-list
 
+    // CH1 — observed on the wire by the LLM proxy (works in replay via the transcript)
+    await expect(agent).toRegisterTools(['Read']);
+
     // Budget
     await expect(agent).toFinishWithin({ tokens: 80_000 });
 

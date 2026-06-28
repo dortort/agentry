@@ -12,7 +12,7 @@ Usage:
   agentry doctor                           probe agent CLIs + driver capabilities
 
 Options:
-  --mode <replay|mcp-live|live|record|dry>
+  --mode <replay|wire-replay|mcp-live|live|record|dry>
   --grep <substring>     filter scenarios by "suite name" match
   --config <path>        config file (default: ./agentry.config.ts)
   --dir <path>           test directory (default: config.testDir)

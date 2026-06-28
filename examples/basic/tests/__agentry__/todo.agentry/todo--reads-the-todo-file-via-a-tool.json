@@ -13,6 +13,24 @@
       "payload": { "type": "run.start", "runId": "rec", "agent": "claude", "model": "claude-haiku-4-5" }
     },
     {
+      "eventId": "rec:llm0",
+      "turnId": "llm:0",
+      "source": "llm-proxy",
+      "capability": "llm",
+      "transport": "http",
+      "agentNativeType": "POST /v1/messages",
+      "redactionStatus": "none",
+      "ts": 0,
+      "payload": {
+        "type": "llm_request",
+        "model": "claude-haiku-4-5",
+        "system": "You are Claude Code.",
+        "messages": [{ "role": "user", "content": "Read the file notes/todo.md and tell me what is on the list." }],
+        "tools": [{ "name": "Read" }],
+        "params": { "stream": true, "max_tokens": 4096 }
+      }
+    },
+    {
       "eventId": "rec:1",
       "turnId": "msg_1",
       "source": "agent",
