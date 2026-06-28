@@ -341,6 +341,14 @@ type AgentEventPayload =
 A single interception layer fronts **both** the LLM gateway and the MCP servers, with the same
 verbs as Playwright's `Route`.
 
+**Positioning principle.** Agentry is a *positionable* proxy: it always impersonates the **next
+hop's upstream**, and **whatever is under test is what points at Agentry**. Testing the agent /
+skills / MCP → the agent's `ANTHROPIC_BASE_URL` points at Agentry (Agentry = the provider, real or
+replayed). Testing an LLM gateway → the agent points at the *real* gateway and the **gateway's**
+provider config points at Agentry (Agentry = the provider pool it routes among; §9.3). The proxy's
+upstream is therefore **configurable** — forward to a real provider, chain to a real gateway, or
+impersonate a multi-provider pool — so Agentry never has to *replace* the component it is testing.
+
 ### 7.1 Routing API
 
 ```ts
@@ -556,9 +564,30 @@ zero internal observability and is fully agent-agnostic — the Playwright-philo
 it did"). `agentry` provides a `baseline` fixture to capture the no-skill/no-plugin run.
 
 ### 9.3 LLM gateways (transport-observed)
-Routing (`toHaveRoutedTo('anthropic')`), fallback (`toHaveFallenBackTo('openai')`), cache behavior,
-rate-limit handling, request/response transformation, token-count accuracy, latency overhead, error
-propagation fidelity. Enabled directly by the LLM interception layer the spine already needs.
+
+**Topology — the gateway-under-test points its provider config at Agentry.** Agentry is a
+*positionable* proxy (§7): it always impersonates the next hop's upstream, and *what is under test
+is what points at Agentry*. So, unlike the agent/skill/MCP case (where the agent's
+`ANTHROPIC_BASE_URL` points at Agentry), here the **agent points at the real gateway** and the
+**gateway's provider/upstream config points at Agentry**, which impersonates the provider pool:
+
+```
+Agent → [Your Gateway = SUT] → provider base_url → [Agentry: provider-impersonation] → mock/real providers
+```
+
+> If Agentry simply replaced the base-URL and forwarded to Anthropic, it would *take the gateway's
+> seat* and the gateway-under-test wouldn't be in the path — you cannot test a gateway you've
+> bypassed. Positioning Agentry on the gateway's **upstream** side is what makes the gateway's
+> *decisions* observable.
+
+Agentry runs in **provider-impersonation mode**: it registers multiple logical provider endpoints,
+observes which one the gateway calls, fault-injects (e.g. `429`) to force fallback, and serves
+canned/recorded completions per provider. Matchers: routing (`toHaveRoutedTo('anthropic')`), fallback
+(`toHaveFallenBackTo('openai')`), cache behavior, rate-limit handling, request/response
+transformation, token-count accuracy, latency overhead, error-propagation fidelity — all keyed off
+the per-provider traffic Agentry sees on the gateway's upstream side. (Chaining Agentry *in front* of
+the gateway instead — agent → Agentry → gateway — covers the gateway's externally-observable contract
+but not its internal routing, so the upstream position is the primary one for routing/fallback tests.)
 
 ---
 
