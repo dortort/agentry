@@ -205,14 +205,24 @@ firm). Still open:
   remaining: MCP shim (0.3), HOME-remap (0.5), cassette canonicalization (0.9), mcp-live (0.10),
   cross-agent (0.11–0.13)
 - [x] Repo shape = monorepo; Phase 0 ownership = Agentry-runs (§7)
-- [~] **Implementation — MVP spine SHIPPED** (65 unit tests, CI green):
+- [~] **Implementation — MVP spine + LLM-proxy phase SHIPPED** (79 unit tests, CI green):
   - [x] **Phase 1 (spine):** monorepo · event model · RunRecord · Sandbox (fs diff) · config
-    (model-pin) · assertion engine (Tier 1–2) · cassette engine · Claude driver (live) · transcript
+    (model-pin) · assertion engine (Tiers 1–3) · cassette engine · Claude driver (live) · transcript
     record/replay · runner + fixtures · console reporter · CLI (init/test/record/doctor). MVP §5
     success criteria met end-to-end (`agentry record` → `agentry test` replay ~10ms).
-  - [~] **Phase 2 (skills/plugins):** `toHaveLoadedPlugin` / `toFireHook` shipped (CH2-observed);
-    remaining CH1 context-injection + CH6 differential (need LLM proxy).
-  - [~] **Phase 3 (MCP):** `MockMcpServer` + `toExposeTools` / `toHaveReceived` shipped (unit-tested);
-    remaining live agent→mock fixture wiring + protocol-compliance matchers.
-  - [ ] **Phase 4** (LLM gateways) · **Phase 5** (Codex/Gemini/Cursor) · **Phase 6** (Tier 3–4,
-    wire cassettes, reporters) · **Phase 7+** — not started.
+  - [x] **LLM proxy + wire cassettes:** `LlmProxy` (record/live/wire-replay) at `ANTHROPIC_BASE_URL`
+    — CH1 `llm_request`/`llm_response` events, byte-faithful wire cassettes, budget proxy-gate,
+    secret redaction, positionable `Upstream` seam. **`wire-replay`** mode (hermetic re-execution,
+    positional VCR) validated live (~6s, $0 real spend).
+  - [~] **Phase 2 (skills/plugins):** `toHaveLoadedPlugin` / `toFireHook` (CH2) + `toInjectContext` /
+    `toRegisterTools` (CH1, via the proxy) shipped. Remaining: CH6 differential harness.
+  - [~] **Phase 3 (MCP):** `MockMcpServer` + `toExposeTools` / `toHaveReceived` shipped; remaining
+    live agent→mock fixture wiring + protocol-compliance matchers.
+  - [~] **Phase 4 (LLM gateways):** foundation laid (observable `llm_request`/`llm_response` +
+    positionable proxy + provider-impersonation seam, SPEC §9.3); remaining: provider-pool resolver
+    + routing/fallback/cache matchers.
+  - [ ] **Phase 5** (Codex/Gemini/Cursor) · **Phase 6** (Tier 4 LLM-as-judge, HTML/JUnit reporters)
+    · **Phase 7+** (trace viewer, codegen, PTY driver) — not started.
+
+  *Known gaps:* wire cassettes capture host config until HOME-remap sandboxing (spike 0.5) lands, so
+  they're not committed for the example yet; `wire-replay` cost display shows recorded (not $0) spend.

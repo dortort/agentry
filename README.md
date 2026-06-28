@@ -41,7 +41,7 @@ All TypeScript is executed directly via `tsx` — no build step required for dev
 |---|---|
 | `@agentry/core` | Event model, config, sandbox, runner, assertions |
 | `@agentry/claude` | Claude Code driver (`claude -p --output-format stream-json`) |
-| `@agentry/mcp` | MCP interception (placeholder; see Roadmap) |
+| `@agentry/mcp` | `MockMcpServer` (JSON-RPC + stdio shim) + MCP matchers |
 | `agentry` | CLI (`agentry test`, `record`, `init`, `doctor`) |
 
 ---
@@ -178,8 +178,9 @@ Configured via `mode` in `agentry.config.ts` or `--mode` on the CLI.
 | Mode | LLM | Use |
 |---|---|---|
 | `replay` (default) | Transcript replay — no agent spawned | CI; fast (<2 s), free |
-| `record` | Live agent run; writes transcript | Authoring / re-baselining |
-| `live` | Live agent run; no transcript written | Periodic drift checks |
+| `wire-replay` | Spawns the real agent against recorded LLM responses (positional VCR) | Hermetic re-execution; $0 real spend |
+| `record` | Live agent run; writes transcript + wire cassette | Authoring / re-baselining |
+| `live` | Live agent run; no capture | Periodic drift checks |
 | `mcp-live` | Live agent run with MCP passthrough | MCP server tests (roadmap) |
 | `dry` | No run; skips all scenarios | Lint/validate test files |
 
@@ -225,7 +226,7 @@ agentry/
 ├── packages/
 │   ├── core/        @agentry/core — events, config, sandbox, runner, assertions, transcript
 │   ├── claude/      @agentry/claude — Claude Code driver
-│   ├── mcp/         @agentry/mcp — MCP interception (stub; see Roadmap)
+│   ├── mcp/         @agentry/mcp — MockMcpServer + MCP matchers
 │   └── cli/         agentry — CLI binary (test, record, init, doctor)
 ├── examples/
 │   └── basic/       Working example with committed transcript
@@ -240,33 +241,29 @@ agentry/
 
 The SPEC describes the full vision. What is implemented vs. planned:
 
-**Implemented (MVP — Phase 1 in progress)**
+**Implemented**
 - Claude driver (`claude -p --output-format stream-json`)
-- Normalized event model (`tool_use`, `tool_result`, `mcp_request`, `message`, `usage`, `run.end`, `plugin`, `skill`, `fs`)
-- Structural assertions: `toHaveToolCall`, `toHaveCalledToolTimes`, `toUseToolsFrom`, `toHaveCalledAll`, `toHaveMcpRequest`, `toFinishWithin`, `toHaveFile`
-- Skill/plugin observable-effect matchers (subset): `toHaveLoadedPlugin`, `toFireHook` (over natively-observed plugin-load + hook-fire events)
+- Normalized causal event model (`tool_use`, `tool_result`, `mcp_request`, `llm_request`/`llm_response`, `message`, `usage`, `run.end`, `plugin`, `skill`, `fs`)
+- Assertions, Tiers 1–3: `toHaveToolCall`, `toHaveCalledToolTimes`, `toUseToolsFrom`, `toHaveCalledAll`, `toHaveMcpRequest`, `toFinishWithin`, `toHaveFile`, `toMatchSchema`
+- Skill/plugin effect matchers: `toHaveLoadedPlugin`, `toFireHook` (CH2) and `toInjectContext`, `toRegisterTools` (CH1, via the proxy)
+- **LLM interception proxy** (`LlmProxy` at `ANTHROPIC_BASE_URL`): CH1 events, byte-faithful **wire cassettes**, budget proxy-gate, secret redaction, positionable `Upstream` seam
+- `MockMcpServer` (JSON-RPC core + stdio shim) + MCP matchers `toExposeTools`, `toHaveReceived`
 - Directory sandbox with before/after fs diff
-- Transcript record/replay (normalized event stream; not wire-level cassettes)
-- `agentry test`, `record`, `init`, `doctor` CLI commands
-- Config system with model-pinning enforcement and budget caps
-- Console reporter with per-test cost summary
+- Transcript record/replay (default) **+ `wire-replay`** (hermetic re-execution, positional VCR)
+- `agentry test`/`record`/`init`/`doctor` CLI; config with model-pinning + budget caps; console reporter with cost
 
 **Roadmap (not yet implemented)**
 
 | Item | Phase |
 |---|---|
-| Skills/plugins matchers — remaining (`toInjectContext`/`toRegisterTools` via CH1, `toChangeBehaviorVs` via CH6 differential); needs the LLM proxy | Phase 2 |
-| `MockMcpServer` fixture and MCP protocol matchers (`toExposeTools`, `toBeValidMcpProtocol`, error codes) | Phase 3 |
-| LLM gateway matchers (routing, fallback, cache, rate-limit, transformation) | Phase 4 |
+| Skills/plugins CH6 **differential** harness (`toChangeBehaviorVs`) | Phase 2 |
+| MCP **live**: agent→mock fixture wiring + protocol-compliance matchers (`toBeValidMcpProtocol`, error codes) | Phase 3 |
+| LLM **gateway** matchers (routing/fallback/cache/rate-limit) + provider-pool resolver (foundation shipped) | Phase 4 |
 | Codex, Gemini, Cursor drivers | Phase 5 (spike-gated) |
 | Semantic/LLM-as-judge assertions (Tier 4: `toSatisfyRubric`) | Phase 6 |
-| Wire-level cassettes — ordered, session-positional LLM/MCP proxy interception | Phase 6 |
-| Structured-output schema assertions (`toMatchSchema`) | Phase 6 |
 | HTML/JUnit/JSON reporters; trace bundles | Phase 6 |
-| Trace viewer UI | Phase 7+ |
-| `agentry codegen` — record-to-test generation | Phase 7+ |
-| PTY/TUI interactive driver + terminal snapshots | Phase 7+ |
-| Container/VM sandbox isolation | Phase 7+ |
+| HOME-remap / container sandbox; commit wire cassettes (host config leakage today) | Phase 7+ |
+| Trace viewer UI; `agentry codegen`; PTY/TUI interactive driver | Phase 7+ |
 
 See [docs/ROADMAP.md](./docs/ROADMAP.md) for the full phased plan and open questions.
 
