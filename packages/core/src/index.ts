@@ -12,3 +12,4 @@ export * from './transcript';
 export * from './runner';
 export * from './reporter';
 export * from './llm';
+export * from './proxy';
