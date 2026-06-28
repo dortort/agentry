@@ -14,7 +14,7 @@ import { request as httpsRequest } from 'node:https';
 import { URL } from 'node:url';
 import { type AgentEvent, type EventFactory } from './events';
 import { parseAnthropicRequest } from './llm';
-import { CassetteRecorder, CassettePlayer, type Cassette } from './cassette';
+import { CassetteRecorder, type Cassette } from './cassette';
 
 export type ProxyMode = 'record' | 'live' | 'wire-replay';
 
@@ -93,6 +93,7 @@ function forward(
     }
     h.host = u.host;
     h['content-length'] = String(Buffer.byteLength(body));
+    h['accept-encoding'] = 'identity'; // capture/serve uncompressed bytes (no gzip to relabel)
     const req = lib(
       {
         hostname: u.hostname,
@@ -129,7 +130,6 @@ export async function startLlmProxy(opts: LlmProxyOptions): Promise<StartedProxy
   const events: AgentEvent[] = [];
   const upstreamCalls = { count: 0 };
   const recorder = new CassetteRecorder(opts.sessionId);
-  const player = opts.cassette ? new CassettePlayer(opts.cassette) : undefined;
   let callIndex = 0;
 
   const emit = (payload: Parameters<EventFactory['make']>[0], turnId: string) =>
@@ -166,10 +166,14 @@ export async function startLlmProxy(opts: LlmProxyOptions): Promise<StartedProxy
       }
 
       if (opts.mode === 'wire-replay') {
-        const hit = player?.lookup({ kind: 'llm', turnIndex: 0, callIndex: idx, endpoint: ENDPOINT, body });
-        if (hit?.hit) {
+        // Positional VCR: the i-th call is served the i-th recorded response. Real
+        // agent requests carry dynamic system content (date, cwd, env), so a
+        // content-hash gate would miss on legitimate re-runs (SPEC §7.4.1). The
+        // canonical key is kept on each entry for integrity/debugging, not gating.
+        const entry = opts.cassette?.entries[idx];
+        if (entry) {
           emit({ type: 'llm_response', model: parseAnthropicRequest(body).model }, turnId);
-          send(res, hit.response as WireResponse);
+          send(res, entry.response as WireResponse);
         } else {
           send(res, {
             status: 502,
