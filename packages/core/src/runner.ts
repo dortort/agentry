@@ -163,6 +163,8 @@ export interface TestResult {
   mode: RunMode;
   error?: string;
   costUSD?: number;
+  /** Number of attempts taken (present only when > 1, i.e. a retry occurred). */
+  attempts?: number;
 }
 
 export interface RunnerDeps {
@@ -203,8 +205,24 @@ function makeRedactor(redact: ResolvedConfig['redact']): (text: string) => strin
 
 export async function runTests(tests: RegisteredTest[], deps: RunnerDeps): Promise<TestResult[]> {
   const results: TestResult[] = [];
-  for (const t of tests) results.push(await runOne(t, deps));
+  for (const t of tests) results.push(await runWithRetries(t, deps));
   return results;
+}
+
+/**
+ * Run a scenario, retrying on failure up to `config.retries` times. Live agent
+ * runs are inherently non-deterministic (model phrasing/paths vary), so a bounded
+ * retry is the standard flake tolerance — a scenario passes if any attempt does.
+ */
+async function runWithRetries(t: RegisteredTest, deps: RunnerDeps): Promise<TestResult> {
+  const maxAttempts = 1 + Math.max(0, deps.config.retries ?? 0);
+  let result = await runOne(t, deps);
+  let attempt = 1;
+  while (result.status === 'failed' && attempt < maxAttempts) {
+    attempt += 1;
+    result = await runOne(t, deps);
+  }
+  return attempt > 1 ? { ...result, attempts: attempt } : result;
 }
 
 async function runOne(t: RegisteredTest, deps: RunnerDeps): Promise<TestResult> {
