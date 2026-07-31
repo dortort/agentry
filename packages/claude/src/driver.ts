@@ -140,8 +140,9 @@ function aggregateUsage(events: AgentEvent[]): Usage {
   return totals;
 }
 
-function buildArgs(opts: RunOptions): string[] {
+export function buildArgs(opts: RunOptions): string[] {
   const args = ['-p', opts.prompt, '--output-format', 'stream-json', '--verbose', '--model', opts.model];
+  if (opts.pluginDir !== undefined) args.push('--plugin-dir', opts.pluginDir);
   if (opts.mcpConfig !== undefined) {
     args.push('--strict-mcp-config', '--mcp-config', JSON.stringify(opts.mcpConfig));
   }
@@ -150,6 +151,7 @@ function buildArgs(opts: RunOptions): string[] {
   if (opts.allowedTools?.length) args.push('--allowedTools', ...opts.allowedTools);
   if (opts.disallowedTools?.length) args.push('--disallowedTools', ...opts.disallowedTools);
   if (opts.appendSystemPrompt) args.push('--append-system-prompt', opts.appendSystemPrompt);
+  if (opts.extraArgs?.length) args.push(...opts.extraArgs);
   return args;
 }
 
