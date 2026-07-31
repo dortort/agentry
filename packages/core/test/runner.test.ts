@@ -65,6 +65,25 @@ describe('runner (replay mode)', () => {
     v(summarize(results)).toMatchObject({ passed: 1, failed: 0 });
   });
 
+  it('retries a failing scenario up to config.retries and passes if a later attempt succeeds', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agentry-runner-'));
+    setCurrentFile(join(dir, 'demo.agentry.ts'));
+    let calls = 0;
+    aTest('flaky', async ({ agent, expect }) => {
+      calls += 1;
+      await agent.run('p');
+      if (calls < 2) throw new Error('flaky fail');
+      await expect(agent).toHaveToolCall('read_file');
+    });
+    const config = resolveConfig({ use: { model: 'claude-haiku-4-5' }, testDir: dir, retries: 2 });
+    await writeTranscriptFor(getRegistry()[0]!, dir, transcriptJson());
+
+    const results = await runTests(getRegistry(), { mode: 'replay', config });
+    v(results[0]!.status).toBe('passed');
+    v(results[0]!.attempts).toBe(2);
+    v(calls).toBe(2);
+  });
+
   it('fails when an assertion does not hold', async () => {
     dir = await mkdtemp(join(tmpdir(), 'agentry-runner-'));
     setCurrentFile(join(dir, 'demo.agentry.ts'));
