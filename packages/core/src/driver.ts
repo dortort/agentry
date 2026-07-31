@@ -31,6 +31,10 @@ export interface RunOptions {
   appendSystemPrompt?: string;
   /** Permission mode passed through to the agent (e.g. 'bypassPermissions'). */
   permissionMode?: string;
+  /** Load an additional agent plugin directory (Claude Code `--plugin-dir`). */
+  pluginDir?: string;
+  /** Arbitrary extra CLI args appended verbatim to the agent invocation. */
+  extraArgs?: string[];
   /** Per-run wall-clock timeout (ms). */
   timeoutMs?: number;
   signal?: AbortSignal;

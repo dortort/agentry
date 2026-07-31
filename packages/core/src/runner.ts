@@ -75,6 +75,8 @@ export interface AgentRunExtra {
   disallowedTools?: string[];
   permissionMode?: string;
   appendSystemPrompt?: string;
+  pluginDir?: string;
+  extraArgs?: string[];
 }
 
 export interface TestFixtures {
