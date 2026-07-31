@@ -77,6 +77,8 @@ export interface AgentRunExtra {
   appendSystemPrompt?: string;
   pluginDir?: string;
   extraArgs?: string[];
+  /** Extra environment for this run; merged over (not replacing) the base env. */
+  env?: Record<string, string>;
 }
 
 export interface TestFixtures {
@@ -114,13 +116,14 @@ export class AgentHandle implements RunViewProvider {
   async run(prompt: string, extra: AgentRunExtra = {}): Promise<RunRecord> {
     this.lastPrompt = prompt;
     const before = await this.sandbox.snapshot();
+    const { env: extraEnv, ...restExtra } = extra;
     const opts: RunOptions = {
       prompt,
       model: this.base.model,
       cwd: this.sandbox.dir,
-      env: this.base.env,
       maxBudgetUSD: this.base.maxBudgetUSD,
-      ...extra,
+      ...restExtra,
+      env: { ...this.base.env, ...extraEnv },
     };
     const rec = await this.driver.run(opts);
     const after = await this.sandbox.snapshot();

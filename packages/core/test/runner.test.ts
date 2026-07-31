@@ -15,7 +15,11 @@ import {
   EventFactory,
   RunRecord,
   summarize,
+  AgentHandle,
+  Sandbox,
   type AgentEvent,
+  type AgentDriver,
+  type RunOptions,
   type RegisteredTest,
 } from '@agentry/core';
 
@@ -102,5 +106,40 @@ describe('runner (replay mode)', () => {
     const results = await runTests(getRegistry(), { mode: 'dry', config });
     v(results[0]!.status).toBe('skipped');
     v(ran).toBe(false);
+  });
+});
+
+describe('AgentHandle env passthrough', () => {
+  it('merges base env with per-run env (per-run wins) and forwards run options', async () => {
+    const seen: RunOptions[] = [];
+    const driver: AgentDriver = {
+      id: 'fake',
+      capabilities: () => ({
+        structuredStream: true,
+        llmInterception: 'none',
+        mcpTransports: [],
+        toolPermissionControl: false,
+        nativeBudgetControl: false,
+      }),
+      async run(opts) {
+        seen.push(opts);
+        return new RunRecord([], { exitCode: 0, reason: 'completed', usage: { inputTokens: 0, outputTokens: 0, costUSD: 0 } });
+      },
+    };
+    const sandbox = await Sandbox.create({ prefix: 'agentry-envtest-' });
+    try {
+      const handle = new AgentHandle(
+        driver,
+        { model: 'claude-haiku-4-5', env: { ANTHROPIC_BASE_URL: 'http://proxy', KEEP: 'base' } },
+        sandbox,
+      );
+      await handle.run('p', { env: { CLAUDE_SCHEDULER_STATE_DIR: '/x/.claude', KEEP: 'override' }, pluginDir: '/repo' });
+      const opts = seen[0]!;
+      v(opts.env).toEqual({ ANTHROPIC_BASE_URL: 'http://proxy', KEEP: 'override', CLAUDE_SCHEDULER_STATE_DIR: '/x/.claude' });
+      v(opts.pluginDir).toBe('/repo');
+      v(opts.cwd).toBe(sandbox.dir);
+    } finally {
+      await sandbox.cleanup();
+    }
   });
 });
