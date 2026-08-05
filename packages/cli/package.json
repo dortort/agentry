@@ -1,5 +1,5 @@
 {
-  "name": "agentry",
+  "name": "agentry-test",
   "version": "0.0.0",
   "type": "module",
   "description": "Agentry CLI — Playwright for AI Agents.",
