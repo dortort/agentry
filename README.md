@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/hero.png" alt="Agentry — Playwright for AI Agents" width="100%">
+</p>
+
 # Agentry
 
 > **Playwright for AI Agents** — end-to-end testing for the infrastructure AI agents interact with.
