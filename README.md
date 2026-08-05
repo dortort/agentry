@@ -47,7 +47,7 @@ All TypeScript is executed directly via `tsx` — no build step required for dev
 | `@agentry/gemini` | Gemini CLI driver (`gemini -p --output-format stream-json`) |
 | `@agentry/antigravity` | Antigravity driver (`agy -p --output-format stream-json`) |
 | `@agentry/mcp` | `MockMcpServer` (JSON-RPC + stdio shim) + MCP matchers |
-| `agentry` | CLI (`agentry test`, `record`, `init`, `doctor`) |
+| `agentry-test` | CLI (`agentry test`, `record`, `init`, `doctor`); installs the `agentry` command |
 
 ---
 
@@ -237,7 +237,7 @@ agentry/
 │   ├── gemini/        @agentry/gemini — Gemini CLI driver
 │   ├── antigravity/   @agentry/antigravity — Antigravity (agy) driver
 │   ├── mcp/           @agentry/mcp — MockMcpServer + MCP matchers
-│   └── cli/           agentry — CLI binary (test, record, init, doctor)
+│   └── cli/           agentry-test — CLI binary `agentry` (test, record, init, doctor)
 ├── examples/
 │   └── basic/       Working example with committed transcript
 └── docs/
