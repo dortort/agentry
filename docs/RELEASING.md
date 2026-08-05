@@ -1,7 +1,7 @@
 # Releasing
 
 Agentry publishes with [Changesets](https://github.com/changesets/changesets).
-All four packages — `agentry`, `@agentry/core`, `@agentry/claude`, `@agentry/mcp` —
+All four packages — `agentry-test`, `@agentry/core`, `@agentry/claude`, `@agentry/mcp` —
 version and publish **together at one shared version** (Playwright-style lockstep,
 configured via `fixed` in `.changeset/config.json`). Every release bumps and
 publishes all four, even if only one changed.
@@ -35,17 +35,17 @@ You never run `npm publish` by hand — merging the version PR is the only publi
 
 ## One-time setup (before the first publish)
 
-- [ ] **Resolve the `agentry` npm name.** It is already taken by an unrelated
-      `agentry@0.1.0`. Options: publish the CLI as scoped `@agentry/cli` (users run
-      `npx @agentry/cli`), pick a different unscoped name, or acquire `agentry`. Until
-      this is settled, `changeset publish` will 403 on the `agentry` package. The
-      package name lives in `packages/cli/package.json`; if it changes, update the
-      `fixed` array in `.changeset/config.json` to match.
+- [x] **Published CLI name.** The bare `agentry` on npm belongs to an unrelated
+      package, so the CLI publishes as **`agentry-test`** (mirroring `@playwright/test`).
+      The `bin` stays `agentry`, so the installed command is still `agentry` — users
+      `npm i -D agentry-test` and run `npx agentry-test …` (or `agentry …` locally).
+      If it is ever renamed again, update `packages/cli/package.json`, the consuming
+      `examples/*`, and the `fixed` array in `.changeset/config.json`.
 - [ ] **Create the `@agentry` npm org** (or user scope) so `@agentry/*` can publish.
 - [ ] **Add the `NPM_TOKEN` repo secret** — an npm **automation** token (bypasses 2FA
       on publish) for an account with publish rights to all package names.
 - [ ] **Confirm the published CLI is executable** — verify `dist/bin.js` carries a
-      `#!/usr/bin/env node` shebang after `pnpm --filter agentry build`.
+      `#!/usr/bin/env node` shebang after `pnpm --filter agentry-test build`.
 
 ## First release (0.0.0 → 0.1.0)
 

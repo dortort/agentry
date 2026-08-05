@@ -58,7 +58,7 @@ The `examples/basic` directory contains a working example with a committed trans
 ### 1. Config: `examples/basic/agentry.config.ts`
 
 ```ts
-import { defineConfig } from 'agentry';
+import { defineConfig } from 'agentry-test';
 
 export default defineConfig({
   testDir: './tests',
@@ -73,7 +73,7 @@ export default defineConfig({
 ### 2. Test: `examples/basic/tests/todo.agentry.ts`
 
 ```ts
-import { test } from 'agentry';
+import { test } from 'agentry-test';
 
 test.describe('todo', () => {
   test('reads the todo file via a tool', async ({ agent, workspace, expect }) => {
