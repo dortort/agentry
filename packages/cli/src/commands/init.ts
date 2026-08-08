@@ -2,7 +2,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const CONFIG = `import { defineConfig } from 'agentry';
+const CONFIG = `import { defineConfig } from 'agentry-test';
 
 export default defineConfig({
   testDir: './tests',
@@ -12,7 +12,7 @@ export default defineConfig({
 });
 `;
 
-const EXAMPLE = `import { test, expect } from 'agentry';
+const EXAMPLE = `import { test, expect } from 'agentry-test';
 
 test.describe('demo', () => {
   test('agent reads a file from the sandbox', async ({ agent, workspace, expect }) => {

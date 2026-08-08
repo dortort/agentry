@@ -141,7 +141,7 @@ Actions first-class integration.
 ## 5. MVP success criteria (the 5-minute test)
 
 A developer can:
-1. `npm i -D agentry` and `npx agentry init` in <5 min.
+1. `npm i -D agentry-test` and `npx agentry-test init` in <5 min.
 2. Write a test that starts Claude Code, sends a prompt triggering an MCP tool, and asserts on the
    tool call + a side-effect.
 3. Run in **`replay`** in <2s and **`mcp-live`/`live`** in <120s.
