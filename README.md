@@ -45,6 +45,7 @@ All TypeScript is executed directly via `tsx` — no build step required for dev
 | `@agentry/claude` | Claude Code driver (`claude -p --output-format stream-json`) |
 | `@agentry/codex` | Codex CLI driver (`codex exec --json`) |
 | `@agentry/gemini` | Gemini CLI driver (`gemini -p --output-format stream-json`) |
+| `@agentry/antigravity` | Antigravity driver (`agy -p --output-format stream-json`) |
 | `@agentry/mcp` | `MockMcpServer` (JSON-RPC + stdio shim) + MCP matchers |
 | `agentry` | CLI (`agentry test`, `record`, `init`, `doctor`) |
 
@@ -249,6 +250,7 @@ The SPEC describes the full vision. What is implemented vs. planned:
 - Claude driver (`claude -p --output-format stream-json`)
 - Codex driver (`codex exec --json`)
 - Gemini driver (`gemini -p --output-format stream-json`; coalesces streaming assistant deltas)
+- Antigravity driver (`agy -p --output-format stream-json`; event-stream normalization faithful, sandbox fs-diff best-effort since agy uses its own scratch dir)
 - Normalized causal event model (`tool_use`, `tool_result`, `mcp_request`, `llm_request`/`llm_response`, `message`, `usage`, `run.end`, `plugin`, `skill`, `fs`)
 - Assertions, Tiers 1–3: `toHaveToolCall`, `toHaveCalledToolTimes`, `toUseToolsFrom`, `toHaveCalledAll`, `toHaveMcpRequest`, `toFinishWithin`, `toHaveFile`, `toMatchSchema`
 - Skill/plugin effect matchers: `toHaveLoadedPlugin`, `toFireHook` (CH2) and `toInjectContext`, `toRegisterTools` (CH1, via the proxy)
