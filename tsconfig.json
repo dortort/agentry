@@ -6,6 +6,7 @@
     "paths": {
       "@agentry/core": ["packages/core/src/index.ts"],
       "@agentry/claude": ["packages/claude/src/index.ts"],
+      "@agentry/codex": ["packages/codex/src/index.ts"],
       "@agentry/mcp": ["packages/mcp/src/index.ts"]
     }
   },

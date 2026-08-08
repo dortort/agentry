@@ -41,12 +41,21 @@ importers:
       '@agentry/claude':
         specifier: workspace:*
         version: link:../claude
+      '@agentry/codex':
+        specifier: workspace:*
+        version: link:../codex
       '@agentry/core':
         specifier: workspace:*
         version: link:../core
       '@agentry/mcp':
         specifier: workspace:*
         version: link:../mcp
+
+  packages/codex:
+    dependencies:
+      '@agentry/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/core:
     dependencies:

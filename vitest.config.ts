@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       '@agentry/core': new URL('./packages/core/src/index.ts', import.meta.url).pathname,
       '@agentry/claude': new URL('./packages/claude/src/index.ts', import.meta.url).pathname,
+      '@agentry/codex': new URL('./packages/codex/src/index.ts', import.meta.url).pathname,
       '@agentry/mcp': new URL('./packages/mcp/src/index.ts', import.meta.url).pathname,
     },
   },
