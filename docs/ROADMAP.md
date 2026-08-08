@@ -16,7 +16,7 @@ architecture, and the decisions still open. **Revised v2** after two pre-impleme
 | Determinism | Record/replay cassettes (ordered, session-positional); **replay default**, live periodic |
 | Authoring | Code-first TypeScript v1; declarative YAML deferred |
 | **Target types in v1** | **All four — skills, plugins, MCP gateways, LLM gateways** (skills & plugins = one workstream → "three workstreams"). **Committed GA.** |
-| **Agents** | **Claude** in MVP; **Codex + Gemini + Cursor** committed v1 objectives, spike-gated fast-follow |
+| **Agents** | **Claude, Codex, Gemini, and Antigravity** drivers shipped; **Cursor** remains a spike-gated fast-follow |
 | North star | Follow Playwright; diverge only for LLM non-determinism (3 divergences — SPEC §1.4) |
 
 ---
@@ -79,9 +79,10 @@ these are answered and written up in `docs/research/phase0-findings.md` (local).
 ### Cross-agent feasibility (per SPEC §4.3 matrix — gate each adapter)
 | # | Question | Why it matters |
 |---|---|---|
-| 0.11 | **Codex:** `codex exec --json`; LLM proxy via `model_providers.<id>.base_url` under `CODEX_HOME`; MCP support | Codex adapter feasibility |
-| 0.12 | **Gemini:** structured stream; base-URL interception (unproven); MCP config | Gemini adapter feasibility |
+| 0.11 | **Codex:** `codex exec --json`; LLM proxy via `model_providers.<id>.base_url` under `CODEX_HOME`; MCP support | Codex adapter feasibility — **✅ shipped** (`@agentry/codex`; stream verified against codex-cli 0.147; interception is `provider-config`, not wired to the Anthropic proxy) |
+| 0.12 | **Gemini:** structured stream; base-URL interception (unproven); MCP config | Gemini adapter feasibility — **✅ shipped** (`@agentry/gemini`; `--output-format stream-json` verified against gemini-cli 0.54; assistant text coalesced from deltas; base-URL interception still unproven → `none`) |
 | 0.13 | **Cursor (highest risk):** does `cursor-agent` run headless/structured at all (probing previously hung)? LLM/MCP interception? | Cursor adapter feasibility — may demote to fast-follow if it fails |
+| 0.14 | **Antigravity (`agy`):** `agy -p --output-format stream-json`; `event`-discriminated stream; permissions via `--dangerously-skip-permissions` | Antigravity adapter feasibility — **✅ shipped** (`@agentry/antigravity`; usage + `run.end` from the terminal `result`; sandbox fs-diff best-effort since agy uses its own scratch dir) |
 
 **Exit criteria:** yes/no + evidence per spike; architecture deltas folded into `SPEC.md`. A failed
 cross-agent spike (esp. 0.13) demotes that agent to post-v1 without affecting the Claude GA path.
@@ -121,8 +122,10 @@ Routing, fallback, cache, rate-limit, transformation, token-accuracy, latency-ov
 propagation matchers over the existing LLM interceptor.
 
 ### Phase 5 — Cross-agent adapters (committed v1 objective, spike-gated)
-Codex, Gemini, Cursor drivers against the proven interface; per-agent capability gating; shared
-suites run across the matrix. Each gated on its Phase 0 spike (0.11–0.13).
+The **Codex, Gemini, and Antigravity** drivers ship against the proven interface (`@agentry/codex`,
+`@agentry/gemini`, `@agentry/antigravity`), each mirroring the Claude reference (pure parser +
+`buildArgs` + honest `capabilities()`), with per-agent capability gating. **Cursor** remains, gated on
+spike 0.13; shared suites run across the full matrix once it lands.
 
 ### Phase 6 — Tier-3/4 assertions + JUnit/JSON/HTML reporters + parallelism hardening
 Structured-output (schema/AST) + LLM-as-judge (recorded for free replay, §8.5); rate-limit-aware
@@ -201,11 +204,12 @@ firm). Still open:
 - [x] Spec drafted + revised post-review (`SPEC.md` v2)
 - [x] Roadmap drafted + revised (this doc v2)
 - [x] Independent review pass (Claude critic + Codex; in `docs/research/`)
-- [~] Phase 0 spikes — **in progress**: 0.1 / 0.2 / 0.4 ✅, 0.6 / 0.7 🟡, config isolation ✅;
+- [~] Phase 0 spikes — **in progress**: 0.1 / 0.2 / 0.4 ✅, 0.6 / 0.7 🟡, config isolation ✅,
+  cross-agent Codex (0.11) / Gemini (0.12) / Antigravity (0.14) ✅;
   remaining: MCP shim (0.3), HOME-remap (0.5), cassette canonicalization (0.9), mcp-live (0.10),
-  cross-agent (0.11–0.13)
+  Cursor (0.13)
 - [x] Repo shape = monorepo; Phase 0 ownership = Agentry-runs (§7)
-- [~] **Implementation — MVP spine + LLM-proxy phase SHIPPED** (79 unit tests, CI green):
+- [~] **Implementation — MVP spine + LLM-proxy phase + cross-agent drivers SHIPPED** (108 unit tests, CI green):
   - [x] **Phase 1 (spine):** monorepo · event model · RunRecord · Sandbox (fs diff) · config
     (model-pin) · assertion engine (Tiers 1–3) · cassette engine · Claude driver (live) · transcript
     record/replay · runner + fixtures · console reporter · CLI (init/test/record/doctor). MVP §5
@@ -221,8 +225,11 @@ firm). Still open:
   - [~] **Phase 4 (LLM gateways):** foundation laid (observable `llm_request`/`llm_response` +
     positionable proxy + provider-impersonation seam, SPEC §9.3); remaining: provider-pool resolver
     + routing/fallback/cache matchers.
-  - [ ] **Phase 5** (Codex/Gemini/Cursor) · **Phase 6** (Tier 4 LLM-as-judge, HTML/JUnit reporters)
-    · **Phase 7+** (trace viewer, codegen, PTY driver) — not started.
+  - [~] **Phase 5 (cross-agent adapters):** Claude + **Codex + Gemini + Antigravity** drivers shipped
+    (each mirrors the reference: pure parser + `buildArgs` + `capabilities()`); `agentry doctor` probes
+    all four CLIs. Remaining: **Cursor** (spike 0.13).
+  - [ ] **Phase 6** (Tier 4 LLM-as-judge, HTML/JUnit reporters) · **Phase 7+** (trace viewer, codegen,
+    PTY driver) — not started.
 
   *Known gaps:* wire cassettes capture host config until HOME-remap sandboxing (spike 0.5) lands, so
   they're not committed for the example yet; `wire-replay` cost display shows recorded (not $0) spend.
