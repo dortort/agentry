@@ -4,7 +4,7 @@
 
 > **Playwright for AI Agents** — end-to-end testing for the infrastructure AI agents interact with.
 
-**Status:** Early MVP — Claude driver, structural assertions, record/replay. No published npm package yet. See [Roadmap](#roadmap).
+**Status:** Early MVP — Claude, Codex, Gemini, and Antigravity drivers; structural assertions; record/replay. No published npm package yet. See [Roadmap](#roadmap).
 
 ---
 
@@ -14,7 +14,7 @@ Playwright drives a real browser and asserts on the DOM. Agentry drives a real A
 
 You write TypeScript tests that:
 
-1. **Drive a real agent CLI** (Claude Code, headless) with a prompt and a sandbox workspace.
+1. **Drive a real agent CLI** (Claude Code, Codex, Gemini, or Antigravity — all headless) with a prompt and a sandbox workspace.
 2. **Observe a normalized event stream** — assistant turns, tool calls, MCP requests, filesystem side-effects, token usage.
 3. **Assert on structure, not text** — `toHaveToolCall`, `toHaveFile`, `toFinishWithin`. Exact matchers on what the agent did; no fragile string matching on free-form output.
 4. **Replay deterministically** in CI via recorded transcripts — fast (<2 s), free, no agent required. Record once live; replay forever.
@@ -27,7 +27,7 @@ The target is the agent's surrounding ecosystem: skills, MCP gateways, plugins �
 
 There is no published npm package yet. Run from this monorepo directly.
 
-**Prerequisites:** Node >= 20, pnpm >= 10, `claude` CLI in your PATH, `ANTHROPIC_API_KEY` set.
+**Prerequisites:** Node >= 20, pnpm >= 10, and the CLI for whichever driver you use in your PATH — `claude` (with `ANTHROPIC_API_KEY`), `codex`, `gemini`, or `agy`, each authenticated per its own vendor. Replay-only runs need none of these.
 
 ```bash
 git clone <this repo>
@@ -67,6 +67,8 @@ export default defineConfig({
   budget: { perTest: { usd: 0.25 } },
 });
 ```
+
+`use.agent` selects the driver — `'claude'` (default), `'codex'`, `'gemini'`, or `'antigravity'` — and `use.model` must be a pinned snapshot id for that agent.
 
 ### 2. Test: `examples/basic/tests/todo.agentry.ts`
 
@@ -214,7 +216,7 @@ Test file  →  runner  →  AgentHandle.run(prompt)
 
 Key design decisions:
 
-- **Structured/headless substrate.** The Claude driver uses `claude -p --output-format stream-json --verbose` — no TTY, no screen scraping. The JSONL stream is the reliable source of truth (the CDP analog).
+- **Structured/headless substrate.** Every driver uses its CLI's structured headless mode — `claude -p --output-format stream-json --verbose`, `codex exec --json`, `gemini -p --output-format stream-json`, `agy -p --output-format stream-json` — no TTY, no screen scraping. The JSONL stream is the reliable source of truth (the CDP analog).
 - **Normalized event model.** Every driver output is translated into the same `AgentEvent` stream (`tool_use`, `tool_result`, `mcp_request`, `message`, `usage`, `run.end`, …). Assertions read only this model; drivers are pluggable.
 - **Sandbox isolation.** Each scenario runs in a fresh temp directory. File side-effects are detected by content-hash snapshotting before/after the run, producing `fs` events.
 - **Budget cap.** `budget.perTest.usd` is enforced post-run in the MVP; `--max-budget-usd` is passed to the Claude CLI as a native backstop.
@@ -229,10 +231,13 @@ See [docs/SPEC.md](./docs/SPEC.md) for the full design.
 ```
 agentry/
 ├── packages/
-│   ├── core/        @agentry/core — events, config, sandbox, runner, assertions, transcript
-│   ├── claude/      @agentry/claude — Claude Code driver
-│   ├── mcp/         @agentry/mcp — MockMcpServer + MCP matchers
-│   └── cli/         agentry — CLI binary (test, record, init, doctor)
+│   ├── core/          @agentry/core — events, config, sandbox, runner, assertions, transcript
+│   ├── claude/        @agentry/claude — Claude Code driver
+│   ├── codex/         @agentry/codex — Codex CLI driver
+│   ├── gemini/        @agentry/gemini — Gemini CLI driver
+│   ├── antigravity/   @agentry/antigravity — Antigravity (agy) driver
+│   ├── mcp/           @agentry/mcp — MockMcpServer + MCP matchers
+│   └── cli/           agentry — CLI binary (test, record, init, doctor)
 ├── examples/
 │   └── basic/       Working example with committed transcript
 └── docs/
@@ -267,7 +272,7 @@ The SPEC describes the full vision. What is implemented vs. planned:
 | Skills/plugins CH6 **differential** harness (`toChangeBehaviorVs`) | Phase 2 |
 | MCP **live**: agent→mock fixture wiring + protocol-compliance matchers (`toBeValidMcpProtocol`, error codes) | Phase 3 |
 | LLM **gateway** matchers (routing/fallback/cache/rate-limit) + provider-pool resolver (foundation shipped) | Phase 4 |
-| Codex, Gemini, Cursor drivers | Phase 5 (spike-gated) |
+| Cursor driver | Phase 5 (spike-gated) |
 | Semantic/LLM-as-judge assertions (Tier 4: `toSatisfyRubric`) | Phase 6 |
 | HTML/JUnit/JSON reporters; trace bundles | Phase 6 |
 | HOME-remap / container sandbox; commit wire cassettes (host config leakage today) | Phase 7+ |
