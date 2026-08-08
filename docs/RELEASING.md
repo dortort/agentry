@@ -1,10 +1,11 @@
 # Releasing
 
 Agentry publishes with [Changesets](https://github.com/changesets/changesets).
-All four packages — `agentry-test`, `@agentry/core`, `@agentry/claude`, `@agentry/mcp` —
-version and publish **together at one shared version** (Playwright-style lockstep,
-configured via `fixed` in `.changeset/config.json`). Every release bumps and
-publishes all four, even if only one changed.
+All seven publishable packages — `agentry-test`, `@agentry/core`, `@agentry/claude`,
+`@agentry/codex`, `@agentry/gemini`, `@agentry/antigravity`, `@agentry/mcp` — version and
+publish **together at one shared version** (Playwright-style lockstep, configured via
+`fixed` in `.changeset/config.json`). Every release bumps and publishes all of them, even
+if only one changed.
 
 ## Day-to-day flow
 
