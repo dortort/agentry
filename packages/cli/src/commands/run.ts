@@ -16,6 +16,7 @@ import {
 import { ClaudeDriver } from '@agentry/claude';
 import { CodexDriver } from '@agentry/codex';
 import { GeminiDriver } from '@agentry/gemini';
+import { AntigravityDriver } from '@agentry/antigravity';
 import { discoverTests } from '../discover';
 
 function selectDriver(agent: string | undefined): AgentDriver {
@@ -24,6 +25,8 @@ function selectDriver(agent: string | undefined): AgentDriver {
       return new CodexDriver();
     case 'gemini':
       return new GeminiDriver();
+    case 'antigravity':
+      return new AntigravityDriver();
     case 'claude':
     default:
       return new ClaudeDriver();

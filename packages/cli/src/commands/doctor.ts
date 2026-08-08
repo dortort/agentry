@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { ClaudeDriver } from '@agentry/claude';
 import { CodexDriver } from '@agentry/codex';
 import { GeminiDriver } from '@agentry/gemini';
+import { AntigravityDriver } from '@agentry/antigravity';
 
 /** \`agentry doctor\` — probe installed agent CLIs and print driver capabilities. */
 export async function cmdDoctor(): Promise<number> {
@@ -46,6 +47,20 @@ export async function cmdDoctor(): Promise<number> {
   console.log('\n  gemini driver capabilities:');
   const gcaps = new GeminiDriver().capabilities();
   for (const [k, val] of Object.entries(gcaps)) {
+    console.log(`    ${k}: ${JSON.stringify(val)}`);
+  }
+
+  const agyBin = process.env.AGENTRY_ANTIGRAVITY_BIN ?? 'agy';
+  const av = spawnSync(agyBin, ['--version'], { encoding: 'utf8' });
+  if (av.status === 0) {
+    console.log(`\n  agy      ✓  ${av.stdout.trim()}`);
+  } else {
+    console.log(`\n  agy      ✗  not found (looked for '${agyBin}')`);
+  }
+
+  console.log('\n  antigravity driver capabilities:');
+  const agyCaps = new AntigravityDriver().capabilities();
+  for (const [k, val] of Object.entries(agyCaps)) {
     console.log(`    ${k}: ${JSON.stringify(val)}`);
   }
   return 0;
