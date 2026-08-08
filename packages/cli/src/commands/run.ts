@@ -15,12 +15,15 @@ import {
 } from '@agentry/core';
 import { ClaudeDriver } from '@agentry/claude';
 import { CodexDriver } from '@agentry/codex';
+import { GeminiDriver } from '@agentry/gemini';
 import { discoverTests } from '../discover';
 
 function selectDriver(agent: string | undefined): AgentDriver {
   switch (agent) {
     case 'codex':
       return new CodexDriver();
+    case 'gemini':
+      return new GeminiDriver();
     case 'claude':
     default:
       return new ClaudeDriver();
