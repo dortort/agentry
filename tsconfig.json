@@ -8,6 +8,7 @@
       "@agentry/claude": ["packages/claude/src/index.ts"],
       "@agentry/codex": ["packages/codex/src/index.ts"],
       "@agentry/gemini": ["packages/gemini/src/index.ts"],
+      "@agentry/antigravity": ["packages/antigravity/src/index.ts"],
       "@agentry/mcp": ["packages/mcp/src/index.ts"]
     }
   },

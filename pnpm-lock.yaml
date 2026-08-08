@@ -30,6 +30,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cli
 
+  packages/antigravity:
+    dependencies:
+      '@agentry/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/claude:
     dependencies:
       '@agentry/core':
@@ -38,6 +44,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@agentry/antigravity':
+        specifier: workspace:*
+        version: link:../antigravity
       '@agentry/claude':
         specifier: workspace:*
         version: link:../claude
