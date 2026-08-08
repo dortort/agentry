@@ -284,4 +284,4 @@ See [docs/ROADMAP.md](./docs/ROADMAP.md) for the full phased plan and open quest
 
 ## License
 
-TBD — see open question §7.1 in [docs/ROADMAP.md](./docs/ROADMAP.md). (Likely MIT for v1.)
+[Apache License 2.0](./LICENSE) © Francis Eytan Dortort

@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Agentry driver for Antigravity (agy) headless stream-json.",
+  "license": "Apache-2.0",
   "exports": { ".": "./src/index.ts" },
   "publishConfig": {
     "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } }
