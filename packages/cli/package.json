@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Agentry CLI — Playwright for AI Agents.",
+  "license": "Apache-2.0",
   "bin": { "agentry": "./src/bin.ts" },
   "exports": { ".": "./src/index.ts" },
   "publishConfig": {

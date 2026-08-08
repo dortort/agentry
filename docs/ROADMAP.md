@@ -183,17 +183,15 @@ catches) · cleanup failure (force-kill + retry).
 Resolved since v1: ~~skills/plugins observability~~ (→ effect contracts, §2); ~~scope~~ (→ held
 firm). Still open:
 
-1. **License & business model** — OSS (MIT/Apache) vs OSS-core + paid cloud? *(Rec: MIT, local-only
-   viewer for v1.)*
-2. **Lead persona for docs** — all four types are in scope, but docs need a *lead* narrative. *(Rec:
+1. **Lead persona for docs** — all four types are in scope, but docs need a *lead* narrative. *(Rec:
    MCP-server developer — clearest competitive gap.)*
-3. **MCP server lifecycle** — Agentry starts/stops servers (`webServer`-style) vs expects them
+2. **MCP server lifecycle** — Agentry starts/stops servers (`webServer`-style) vs expects them
    running. *(Rec: manage them + `MockMcpServer` fixture.)*
-4. **Cassette storage** — committed to the repo under test vs separate cache. *(Rec: committed for
+3. **Cassette storage** — committed to the repo under test vs separate cache. *(Rec: committed for
    hermetic CI; external-store override for large ones.)*
-5. ~~**Repo shape**~~ — **RESOLVED (2026-06-27): monorepo** (`@agentry/core`, `/claude`, `/mcp`,
+4. ~~**Repo shape**~~ — **RESOLVED (2026-06-27): monorepo** (`@agentry/core`, `/claude`, `/mcp`,
    `/reporters`, …).
-6. ~~**Phase 0 ownership**~~ — **RESOLVED (2026-06-27): Agentry runs the spikes** in the owner's
+5. ~~**Phase 0 ownership**~~ — **RESOLVED (2026-06-27): Agentry runs the spikes** in the owner's
    environment (in progress — see §3 and `docs/research/phase0-findings.md`).
 
 ---
