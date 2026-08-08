@@ -15,6 +15,7 @@
     "@agentry/claude": "workspace:*",
     "@agentry/codex": "workspace:*",
     "@agentry/gemini": "workspace:*",
+    "@agentry/antigravity": "workspace:*",
     "@agentry/mcp": "workspace:*"
   }
 }

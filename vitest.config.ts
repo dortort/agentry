@@ -11,6 +11,7 @@ export default defineConfig({
       '@agentry/claude': new URL('./packages/claude/src/index.ts', import.meta.url).pathname,
       '@agentry/codex': new URL('./packages/codex/src/index.ts', import.meta.url).pathname,
       '@agentry/gemini': new URL('./packages/gemini/src/index.ts', import.meta.url).pathname,
+      '@agentry/antigravity': new URL('./packages/antigravity/src/index.ts', import.meta.url).pathname,
       '@agentry/mcp': new URL('./packages/mcp/src/index.ts', import.meta.url).pathname,
     },
   },
