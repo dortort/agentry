@@ -11,9 +11,21 @@ import {
   reportConsole,
   type RunMode,
   type AgentryConfig,
+  type AgentDriver,
 } from '@agentry/core';
 import { ClaudeDriver } from '@agentry/claude';
+import { CodexDriver } from '@agentry/codex';
 import { discoverTests } from '../discover';
+
+function selectDriver(agent: string | undefined): AgentDriver {
+  switch (agent) {
+    case 'codex':
+      return new CodexDriver();
+    case 'claude':
+    default:
+      return new ClaudeDriver();
+  }
+}
 
 /** `agentry test` / `agentry record`. Returns a process exit code. */
 export async function cmdRun(args: string[], forceMode?: RunMode): Promise<number> {
@@ -59,7 +71,7 @@ export async function cmdRun(args: string[], forceMode?: RunMode): Promise<numbe
   }
 
   console.log(`\nagentry — ${tests.length} scenario(s) · mode=${mode}\n`);
-  const liveDriver = new ClaudeDriver();
+  const liveDriver = selectDriver(config.use.agent);
   const results = await runTests(tests, { mode, config, liveDriver });
   const summary = reportConsole(results);
   return summary.failed > 0 ? 1 : 0;
