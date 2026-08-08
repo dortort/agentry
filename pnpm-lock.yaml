@@ -47,6 +47,9 @@ importers:
       '@agentry/core':
         specifier: workspace:*
         version: link:../core
+      '@agentry/gemini':
+        specifier: workspace:*
+        version: link:../gemini
       '@agentry/mcp':
         specifier: workspace:*
         version: link:../mcp
@@ -65,6 +68,12 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+
+  packages/gemini:
+    dependencies:
+      '@agentry/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/mcp:
     dependencies:
