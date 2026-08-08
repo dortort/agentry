@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { ClaudeDriver } from '@agentry/claude';
 import { CodexDriver } from '@agentry/codex';
+import { GeminiDriver } from '@agentry/gemini';
 
 /** \`agentry doctor\` — probe installed agent CLIs and print driver capabilities. */
 export async function cmdDoctor(): Promise<number> {
@@ -31,6 +32,20 @@ export async function cmdDoctor(): Promise<number> {
   console.log('\n  codex driver capabilities:');
   const codexCaps = new CodexDriver().capabilities();
   for (const [k, val] of Object.entries(codexCaps)) {
+    console.log(`    ${k}: ${JSON.stringify(val)}`);
+  }
+
+  const geminiBin = process.env.AGENTRY_GEMINI_BIN ?? 'gemini';
+  const gv = spawnSync(geminiBin, ['--version'], { encoding: 'utf8' });
+  if (gv.status === 0) {
+    console.log(`\n  gemini   ✓  ${gv.stdout.trim()}`);
+  } else {
+    console.log(`\n  gemini   ✗  not found (looked for '${geminiBin}')`);
+  }
+
+  console.log('\n  gemini driver capabilities:');
+  const gcaps = new GeminiDriver().capabilities();
+  for (const [k, val] of Object.entries(gcaps)) {
     console.log(`    ${k}: ${JSON.stringify(val)}`);
   }
   return 0;
