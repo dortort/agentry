@@ -2,7 +2,7 @@
 
 > **Playwright for AI Agents.** End-to-end testing for the things AI agents interact with —
 > **skills, plugins, MCP gateways, and LLM gateways** — by driving real agent CLIs
-> (Claude, Codex, Gemini, Cursor) through scripted scenarios and asserting on what they *do*.
+> (Claude, Codex, Gemini, Antigravity, and Cursor) through scripted scenarios and asserting on what they *do*.
 
 **Status:** Draft v2 (post-review) · **Owner:** dortort · **Last updated:** 2026-06-27
 
@@ -157,7 +157,7 @@ roadmap (Phase 0) validates each before committing.
 
 ```ts
 interface AgentDriver {
-  readonly id: 'claude' | 'codex' | 'gemini' | 'cursor' | string;
+  readonly id: 'claude' | 'codex' | 'gemini' | 'antigravity' | 'cursor' | string;
   capabilities(): DriverCapabilities;
   launch(opts: LaunchOptions): Promise<AgentSession>;
 }
@@ -227,23 +227,54 @@ claude -p "<prompt>" \
   `--mcp-config`.
 - **Skill/plugin observation** via the channels in §6.1 / §9.
 
-### 4.3 Per-agent capability & interception matrix (validate in Phase 0 before freezing the interface)
+### 4.3 Per-agent capability & interception matrix
 
-| Capability | Claude | Codex | Gemini | Cursor |
-|---|---|---|---|---|
-| Machine-readable stream | `stream-json` ✓ | `codex exec --json` ✓ | `--output-format stream-json` ✓ (verify) | `cursor-agent` print/stream ⚠️ unverified |
-| LLM interception | `ANTHROPIC_BASE_URL` | `model_providers.<id>.base_url` (under `CODEX_HOME`; built-in provider ids reserved) | base-URL **unproven** | **unproven / high-risk** |
-| MCP transports | stdio + http/sse | verify | stdio + http/sse (verify) | verify |
-| Config isolation | `--strict-mcp-config`, env/HOME | **`CODEX_HOME`** (not project-local) | env/HOME (verify) | verify |
-| Session persistence off | `--no-session-persistence` | verify | verify | verify |
-| Native budget control | `--max-budget-usd` | verify | verify | verify |
-| Known risk | low | medium (config model differs) | medium (base-URL unproven) | **highest** (`cursor-agent --help` hung during probing) |
+Claude, Codex, Gemini, and Antigravity are shipped; the cells below reflect each driver's actual
+`capabilities()` and invocation. Cursor is not yet built (ROADMAP spike 0.13).
+
+| Capability | Claude | Codex | Gemini | Antigravity | Cursor |
+|---|---|---|---|---|---|
+| Machine-readable stream | `stream-json` ✓ | `codex exec --json` ✓ | `--output-format stream-json` ✓ | `agy -o stream-json` ✓ (`event`-discriminated) | `cursor-agent` ⚠️ unverified |
+| `llmInterception` | `base-url` (`ANTHROPIC_BASE_URL`) | `provider-config` (`model_providers.<id>.base_url`; **not** wired to Agentry's Anthropic proxy) | `none` (base-URL unproven) | `none` (routed through Antigravity's backend) | unverified |
+| `mcpTransports` | stdio + http/sse | stdio | stdio + http/sse | none (unverified) | unverified |
+| Config isolation / hermeticity | `--strict-mcp-config`, `--no-session-persistence` | `--ephemeral`, `--skip-git-repo-check` | `--skip-trust` | `--add-dir` (agent still writes to its own scratch dir) | unverified |
+| `toolPermissionControl` | ✓ (`--permission-mode`) | ✓ (`--sandbox` / `--dangerously-bypass-approvals-and-sandbox`) | ✓ (`--approval-mode`, `--allowed-tools`) | ✓ (`--dangerously-skip-permissions`) | unverified |
+| `nativeBudgetControl` | ✓ (`--max-budget-usd`) | ✗ | ✗ | ✗ | unverified |
+| Known risk / caveat | low | no cost reported; no terminal event (`run.end` synthesized on exit) | assistant text streams as deltas (coalesced); auth-tier changes across CLI versions | writes to a scratch dir → sandbox fs-diff best-effort; MCP unverified | **highest** (`cursor-agent --help` hung during probing) |
 
 > These are **not interchangeable adapters.** Each driver's `capabilities()` drives capability
-> gating (`test.skip(!caps.mcp)`), and each row above is a Phase 0 spike (ROADMAP §3) before that
-> driver is built. Claude is the reference; the rest are committed v1 objectives, spike-gated.
+> gating (`test.skip(!caps.mcp)`). Claude is the reference; Codex, Gemini, and Antigravity are shipped
+> and their rows reflect real, verified behavior. **Cursor** remains an unvalidated Phase 0 spike
+> (ROADMAP 0.13). Only Claude wires the LLM proxy today, so **wire cassettes apply to Claude alone** —
+> transcript record/replay works for every driver.
 
-### 4.4 Secondary PTY/TUI driver
+### 4.4 Codex, Gemini, and Antigravity drivers (shipped)
+
+Each mirrors the Claude reference — a pure native-event → `AgentEvent` mapper, a pure `buildArgs`, and
+a `Driver` class that spawns its CLI with stdin ignored (so the process never blocks on stdin). Event
+schemas were captured live from the CLIs (codex-cli 0.147, gemini-cli 0.54, agy 1.1) and drive the
+unit tests.
+
+- **Codex** (`@agentry/codex`) — `codex exec --json -C <cwd> -m <model> --ephemeral --skip-git-repo-check`,
+  plus `--dangerously-bypass-approvals-and-sandbox` (bypass) or `--sandbox workspace-write`. The stream is
+  `type`-discriminated (`thread.started`, `item.started/completed{agent_message|command_execution|file_change}`,
+  `turn.completed`); shell runs → tool `shell`, patches → `apply_patch`; usage from `turn.completed`. Codex
+  emits no terminal event, so `run.end` is synthesized on exit, and it reports no per-run cost. Interception
+  is `provider-config`, so the Anthropic LLM proxy is not wired (no wire cassettes).
+- **Gemini** (`@agentry/gemini`) — `gemini -p --output-format stream-json -m <model> --skip-trust`
+  (`--skip-trust` is required for headless untrusted workspaces), plus `--approval-mode yolo|default`.
+  `type`-discriminated (`init`, `message`, `tool_use`, `tool_result`, `error`, `result`); assistant text
+  arrives as `delta` chunks that are **coalesced into one message** per turn; usage + `run.end` from the
+  terminal `result`. Base-URL interception is unproven → `none`.
+- **Antigravity** (`@agentry/antigravity`) — `agy -p --output-format stream-json --model <name> --add-dir <cwd>`,
+  plus `--dangerously-skip-permissions`. The stream is **`event`-discriminated** (`init`, `step_update`,
+  `result`); `agent_response` text is coalesced per `step_index`, and usage + `run.end` come from the
+  authoritative terminal `result`. agy writes to its own project/scratch dir by default, so sandbox fs-diff
+  capture is best-effort; MCP support is unverified (`mcpTransports: []`).
+
+`agentry doctor` probes all four CLIs and prints each driver's `capabilities()`.
+
+### 4.5 Secondary PTY/TUI driver
 
 For interactive UX tests, a `node-pty` + `@xterm/headless` driver drives the real TUI and parses
 screen state. Inherits the harder problems (idle detection, ANSI noise); **opt-in, off the MVP
