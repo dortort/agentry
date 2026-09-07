@@ -29,6 +29,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Build
+        run: pnpm build
+
   changeset:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -48,6 +51,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Require a changeset for package changes
+        # Version PRs consume the changesets while bumping package versions.
+        # Match the author and source repository as well as the release branch.
+        if: >-
+          !(github.event.pull_request.user.login == 'github-actions[bot]' &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            github.head_ref == format('changeset-release/{0}', github.base_ref))
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
