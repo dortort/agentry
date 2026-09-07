@@ -4,6 +4,11 @@
   "type": "module",
   "description": "Agentry CLI — Playwright for AI Agents.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dortort/agentry.git",
+    "directory": "packages/cli"
+  },
   "bin": { "agentry": "./src/bin.ts" },
   "exports": { ".": "./src/index.ts" },
   "publishConfig": {
