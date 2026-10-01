@@ -625,7 +625,7 @@ but not its internal routing, so the upstream position is the primary one for ro
 ## 10. Test Authoring API (code-first TypeScript)
 
 ```ts
-import { test, expect } from 'agentry';
+import { test, expect } from 'agentry-test';
 
 test.describe('filesystem MCP server', () => {
   test('reads a file via the MCP tool', async ({ agent, workspace, mcp }) => {
@@ -671,7 +671,7 @@ combos.
 ## 11. Configuration (`agentry.config.ts`)
 
 ```ts
-import { defineConfig } from 'agentry';
+import { defineConfig } from 'agentry-test';
 
 export default defineConfig({
   testDir: './tests',

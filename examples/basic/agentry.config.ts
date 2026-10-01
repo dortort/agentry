@@ -1,4 +1,4 @@
-import { defineConfig } from 'agentry';
+import { defineConfig } from 'agentry-test';
 
 export default defineConfig({
   testDir: './tests',

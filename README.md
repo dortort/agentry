@@ -47,7 +47,7 @@ All TypeScript is executed directly via `tsx` — no build step required for dev
 | `@agentry/gemini` | Gemini CLI driver (`gemini -p --output-format stream-json`) |
 | `@agentry/antigravity` | Antigravity driver (`agy -p --output-format stream-json`) |
 | `@agentry/mcp` | `MockMcpServer` (JSON-RPC + stdio shim) + MCP matchers |
-| `agentry` | CLI (`agentry test`, `record`, `init`, `doctor`) |
+| `agentry-test` | CLI (`agentry test`, `record`, `init`, `doctor`); installs the `agentry` command |
 
 ---
 
@@ -58,7 +58,7 @@ The `examples/basic` directory contains a working example with a committed trans
 ### 1. Config: `examples/basic/agentry.config.ts`
 
 ```ts
-import { defineConfig } from 'agentry';
+import { defineConfig } from 'agentry-test';
 
 export default defineConfig({
   testDir: './tests',
@@ -73,7 +73,7 @@ export default defineConfig({
 ### 2. Test: `examples/basic/tests/todo.agentry.ts`
 
 ```ts
-import { test } from 'agentry';
+import { test } from 'agentry-test';
 
 test.describe('todo', () => {
   test('reads the todo file via a tool', async ({ agent, workspace, expect }) => {
@@ -237,7 +237,7 @@ agentry/
 │   ├── gemini/        @agentry/gemini — Gemini CLI driver
 │   ├── antigravity/   @agentry/antigravity — Antigravity (agy) driver
 │   ├── mcp/           @agentry/mcp — MockMcpServer + MCP matchers
-│   └── cli/           agentry — CLI binary (test, record, init, doctor)
+│   └── cli/           agentry-test — CLI binary `agentry` (test, record, init, doctor)
 ├── examples/
 │   └── basic/       Working example with committed transcript
 └── docs/

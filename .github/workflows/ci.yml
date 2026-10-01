@@ -28,3 +28,37 @@ jobs:
       # Unit + replay tests only — no live agent calls, so CI needs no API key.
       - name: Test
         run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  changeset:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Require a changeset for package changes
+        # Version PRs consume the changesets while bumping package versions.
+        # Match the author and source repository as well as the release branch.
+        if: >-
+          !(github.event.pull_request.user.login == 'github-actions[bot]' &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            github.head_ref == format('changeset-release/{0}', github.base_ref))
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          pnpm changeset status --since="origin/$BASE_REF"
