@@ -125,12 +125,14 @@ export const matchers = {
       }
     }
     const res = schema.safeParse(value);
+    // zod 4 makes ZodError.issues non-enumerable, so stringifying the error alone hides them.
+    const detail = (res.error as { issues?: unknown } | undefined)?.issues ?? res.error;
     return {
       pass: res.success,
       message: () =>
         res.success
           ? `expected value NOT to match schema`
-          : `expected value to match schema; validation error:\n${JSON.stringify(res.error, null, 2)}`,
+          : `expected value to match schema; validation error:\n${JSON.stringify(detail, null, 2)}`,
     };
   },
 

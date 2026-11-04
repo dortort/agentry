@@ -114,6 +114,10 @@ describe('schema matcher (Tier 3)', () => {
     v(() => expect('not json').toMatchSchema(Invoice)).toThrow();
     v(() => expect({ id: 'x' }).not.toMatchSchema(Invoice)).not.toThrow();
   });
+
+  it('toMatchSchema failure message lists the validation issues', () => {
+    v(() => expect({ id: 'x', total: 9 }).toMatchSchema(Invoice)).toThrow(/"path": \[\s*"id"\s*\]/);
+  });
 });
 
 describe('CH1 matchers (toInjectContext, toRegisterTools)', () => {
