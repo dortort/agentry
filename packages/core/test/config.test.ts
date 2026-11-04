@@ -143,6 +143,15 @@ describe('resolveConfig — schema validation', () => {
   it('throws ConfigError for a negative retries value', () => {
     expect(() => resolveConfig({ retries: -1 })).toThrow(ConfigError);
   });
+
+  it('throws ConfigError for non-finite timeouts and budget caps', () => {
+    expect(() => resolveConfig({ timeout: Infinity })).toThrow(ConfigError);
+    expect(() => resolveConfig({ budget: { perTest: { usd: Infinity } } })).toThrow(ConfigError);
+  });
+
+  it('error message names the offending path', () => {
+    expect(() => resolveConfig({ budget: { perTest: { tokens: 1.5 } } })).toThrow(/budget\.perTest\.tokens/);
+  });
 });
 
 // ── defineConfig ──────────────────────────────────────────────────────────────
