@@ -12,9 +12,13 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build": "pnpm -r build",
-    "agentry": "tsx packages/cli/src/bin.ts"
+    "agentry": "tsx packages/cli/src/bin.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm -r build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.1",
     "@types/node": "^22.10.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",

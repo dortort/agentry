@@ -1,4 +1,4 @@
-import { test } from 'agentry';
+import { test } from 'agentry-test';
 
 test.describe('todo', () => {
   test('reads the todo file via a tool', async ({ agent, workspace, expect }) => {
